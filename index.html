@@ -226,16 +226,20 @@ function fitPrevFonts(artEl,descEls,maxW,maxH){
 function printLabel(){
   if(!curA)return;
   var a=curA,fkey=getFmt(),f=FMT[fkey];
+  var isKlein=(fkey==='klein');
   var pw=f.mmW+'mm',ph=f.mmH+'mm';
+  var pageW=isKlein?pw:'210mm';
+  var pageH=isKlein?ph:'297mm';
   var descs=[a.z1,a.z2,a.z3].filter(Boolean);
   var dscHtml=descs.map(function(d){return '<div class="dsc">'+hEsc(d)+'</div>';}).join('');
   var html='<!DOCTYPE html>\n<html lang="de"><head>\n<meta charset="UTF-8">\n'
     +'<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>\n'
     +'<style>\n'
     +'*{box-sizing:border-box;margin:0;padding:0;}\n'
-    +'@page{size:'+pw+' '+ph+';margin:0;}\n'
-    +'html,body{width:'+pw+';height:'+ph+';overflow:hidden;}\n'
-    +'.wrap{width:'+pw+';height:'+ph+';display:flex;align-items:stretch;'
+    +'@page{size:'+pageW+' '+pageH+';margin:0;}\n'
+    +'html,body{width:'+pageW+';height:'+pageH+';overflow:hidden;background:white;}\n'
+    +'.page{position:relative;width:'+pageW+';height:'+pageH+';}\n'
+    +'.wrap{position:absolute;top:0;left:0;width:'+pw+';height:'+ph+';display:flex;align-items:stretch;'
     +'padding:'+f.padMm+'mm;gap:'+(f.padMm/2).toFixed(1)+'mm;background:white;font-family:Arial,sans-serif;}\n'
     +'.qsec{width:'+f.qrMm+'mm;min-width:'+f.qrMm+'mm;display:flex;align-items:center;justify-content:center;}\n'
     +'.dvd{width:.3mm;background:#999;flex-shrink:0;margin:0;}\n'
@@ -243,15 +247,17 @@ function printLabel(){
     +'overflow:hidden;padding-left:'+(f.padMm/2).toFixed(1)+'mm;gap:'+(f.padMm*.25).toFixed(1)+'mm;}\n'
     +'.art{font-weight:bold;line-height:1.1;overflow:hidden;white-space:nowrap;}\n'
     +'.dsc{line-height:1.25;color:#222;overflow:hidden;white-space:nowrap;}\n'
-    +'.brd{position:fixed;top:0;left:0;width:'+pw+';height:'+ph+';border:.3mm solid #bbb;pointer-events:none;}\n'
+    +'.brd{position:absolute;top:0;left:0;width:'+pw+';height:'+ph+';border:.3mm solid #bbb;pointer-events:none;}\n'
     +'<\/style><\/head>\n'
     +'<body>\n'
+    +'<div class="page">\n'
     +'<div class="wrap">\n'
     +'  <div class="qsec"><div id="qr"><\/div><\/div>\n'
     +'  <div class="dvd"><\/div>\n'
     +'  <div class="txt"><div class="art" id="art">'+hEsc(a.nr)+'<\/div>'+dscHtml+'<\/div>\n'
     +'<\/div>\n'
     +'<div class="brd"><\/div>\n'
+    +'<\/div>\n'
     +'<script>\n'
     +'(function(){\n'
     +'function fit(){\n'
