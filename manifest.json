@@ -1,0 +1,12 @@
+{
+  "name": "Label Drucker – Wego Systembaustoffe",
+  "short_name": "Label Drucker",
+  "description": "Barcode-Etiketten drucken für Wego Systembaustoffe GmbH",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f0f0f0",
+  "theme_color": "#003366",
+  "icons": [
+    { "src": "icon.svg", "type": "image/svg+xml", "sizes": "any", "purpose": "any maskable" }
+  ]
+}
