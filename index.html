@@ -49,6 +49,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .label-dom .ltxt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
 .label-dom .lart{font-weight:bold;line-height:1.05;white-space:nowrap;}
 .label-dom .ldesc{line-height:1.25;color:#333;white-space:nowrap;}
+.label-dom.wrap .ldesc{white-space:normal;overflow-wrap:break-word;}
 .cnt{font-size:.82em;color:#888;margin-top:8px;}
 </style>
 </head>
@@ -102,12 +103,12 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 </div>
 <script>
 var FMT={
-  klein: {mmW:57,   mmH:31,    padMm:3, qrMm:24},
+  klein: {mmW:57,   mmH:31,    padMm:2, qrMm:20, artShare:0.32, wrap:true},
   mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
   gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
 };
 var PXMM=3.7795,PREVW=560,PREVH=420;
-var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, RESERVE=1.5;
+var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97;
 var artikelMap={},curA=null,prevQR=null;
 
 /* ---------- Textbreiten-Messung via Canvas (aufloesungsunabhaengig) ---------- */
@@ -118,32 +119,47 @@ function widthRatio(txt,bold){
 }
 
 /* Layout + Schriftgroessen in Millimetern - unabhaengig von Fenstergroesse.
-   RESERVE haelt etwas Breite frei, damit die Zeile nie ueberlaeuft
-   (ein Ueberlauf wuerde im Druck "An Seite anpassen" ausloesen). */
+   Reserve haelt Breite frei, damit keine Zeile ueberlaeuft (Ueberlauf wuerde
+   im Druck "An Seite anpassen" ausloesen).
+   Bei wrap=true duerfen Beschreibungszeilen umbrechen; die Schriftgroesse wird
+   so gewaehlt, dass alle umgebrochenen Zeilen in die Hoehe passen. */
 function calcLayout(a,f){
   var gap=f.padMm/2;
   var dvd=0.3;
+  var reserve=f.wrap?0.8:1.5;
   var txtW=f.mmW-2*f.padMm-f.qrMm-2*gap-dvd;
-  var budget=txtW-RESERVE;
+  var budget=txtW-reserve;
   var availH=f.mmH-2*f.padMm;
   var descs=[a.z1,a.z2,a.z3].filter(Boolean);
 
-  var artBox=availH*ART_SHARE;
-  var dscBox=availH*(1-ART_SHARE);
+  var share=f.artShare||ART_SHARE;
+  var artBox=availH*share;
+  var dscBox=availH*(1-share);
 
   var rA=widthRatio(a.nr,true);
   var artFs=Math.min(artBox/LH_ART, rA>0?budget/rA:artBox)*SAFE;
 
   var dscFs=0;
   if(descs.length){
-    dscFs=(dscBox/descs.length)/LH_DSC;
-    descs.forEach(function(t){
-      var r=widthRatio(t,false);
-      if(r>0)dscFs=Math.min(dscFs,budget/r);
-    });
-    dscFs*=SAFE;
+    var ratios=descs.map(function(t){return widthRatio(t,false);});
+    if(f.wrap){
+      var fs=dscBox/LH_DSC, ok=1.2;
+      for(;fs>=1.2;fs-=0.05){
+        var h=0;
+        for(var i=0;i<ratios.length;i++){
+          var lines=Math.max(1,Math.ceil((ratios[i]*fs)/budget));
+          h+=lines*fs*LH_DSC;
+        }
+        if(h<=dscBox){ok=fs;break;}
+      }
+      dscFs=Math.max(1.2,ok);
+    }else{
+      dscFs=(dscBox/descs.length)/LH_DSC;
+      ratios.forEach(function(r){if(r>0)dscFs=Math.min(dscFs,budget/r);});
+      dscFs*=SAFE;
+    }
   }
-  return {gap:gap,dvd:dvd,txtW:txtW,availH:availH,descs:descs,artFs:artFs,dscFs:dscFs};
+  return {gap:gap,dvd:dvd,txtW:txtW,availH:availH,descs:descs,artFs:artFs,dscFs:dscFs,wrap:!!f.wrap};
 }
 
 async function loadData(){
@@ -214,7 +230,8 @@ function renderPreview(){
   var sc=Math.min(PREVW/(f.mmW*PXMM),PREVH/(f.mmH*PXMM),1.8)*0.9;
   var px=function(mm){return mm*PXMM*sc;};
 
-  var label=document.createElement('div');label.className='label-dom';
+  var label=document.createElement('div');
+  label.className='label-dom'+(L.wrap?' wrap':'');
   label.style.cssText='width:'+px(f.mmW)+'px;height:'+px(f.mmH)+'px;padding:'+px(f.padMm)+'px;';
 
   var lqr=document.createElement('div');lqr.className='lqr';
@@ -286,7 +303,8 @@ function printLabel(){
       '.dvd{width:'+L.dvd+'mm;align-self:stretch;background:#999;margin:0 '+L.gap+'mm;flex:0 0 auto;}',
       '.txt{flex:1 1 auto;min-width:0;overflow:hidden;}',
       '.art{font-weight:bold;line-height:'+LH_ART+';white-space:nowrap;font-size:'+L.artFs.toFixed(2)+'mm;}',
-      '.dsc{line-height:'+LH_DSC+';color:#222;white-space:nowrap;font-size:'+L.dscFs.toFixed(2)+'mm;}',
+      '.dsc{line-height:'+LH_DSC+';color:#222;font-size:'+L.dscFs.toFixed(2)+'mm;'
+        +(L.wrap?'white-space:normal;overflow-wrap:break-word;':'white-space:nowrap;')+'}',
       '.brd{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:.3mm solid #bbb;pointer-events:none;}'
     ].join('\n');
 
