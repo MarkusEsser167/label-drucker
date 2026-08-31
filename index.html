@@ -45,8 +45,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .prev-ph{color:#aaa;font-size:.9em;}
 .label-dom{display:flex;align-items:center;background:white;font-family:Arial,sans-serif;border:1px solid #bbb;overflow:hidden;flex-shrink:0;}
 .label-dom .lqr{display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.label-dom .ldiv{background:#999;flex-shrink:0;align-self:stretch;}
-.label-dom .ltxt{display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
+.label-dom .ldiv{background:#999;flex:0 0 auto;align-self:stretch;}
+.label-dom .ltxt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
 .label-dom .lart{font-weight:bold;line-height:1.05;white-space:nowrap;}
 .label-dom .ldesc{line-height:1.25;color:#333;white-space:nowrap;}
 .cnt{font-size:.82em;color:#888;margin-top:8px;}
@@ -107,7 +107,7 @@ var FMT={
   gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
 };
 var PXMM=3.7795,PREVW=560,PREVH=420;
-var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97;
+var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, RESERVE=1.5;
 var artikelMap={},curA=null,prevQR=null;
 
 /* ---------- Textbreiten-Messung via Canvas (aufloesungsunabhaengig) ---------- */
@@ -117,11 +117,14 @@ function widthRatio(txt,bold){
   return _cx.measureText(String(txt)).width/100;
 }
 
-/* Berechnet Layout + Schriftgroessen in Millimetern - unabhaengig von Fenstergroesse */
+/* Layout + Schriftgroessen in Millimetern - unabhaengig von Fenstergroesse.
+   RESERVE haelt etwas Breite frei, damit die Zeile nie ueberlaeuft
+   (ein Ueberlauf wuerde im Druck "An Seite anpassen" ausloesen). */
 function calcLayout(a,f){
   var gap=f.padMm/2;
   var dvd=0.3;
   var txtW=f.mmW-2*f.padMm-f.qrMm-2*gap-dvd;
+  var budget=txtW-RESERVE;
   var availH=f.mmH-2*f.padMm;
   var descs=[a.z1,a.z2,a.z3].filter(Boolean);
 
@@ -129,14 +132,14 @@ function calcLayout(a,f){
   var dscBox=availH*(1-ART_SHARE);
 
   var rA=widthRatio(a.nr,true);
-  var artFs=Math.min(artBox/LH_ART, rA>0?txtW/rA:artBox)*SAFE;
+  var artFs=Math.min(artBox/LH_ART, rA>0?budget/rA:artBox)*SAFE;
 
   var dscFs=0;
   if(descs.length){
     dscFs=(dscBox/descs.length)/LH_DSC;
     descs.forEach(function(t){
       var r=widthRatio(t,false);
-      if(r>0)dscFs=Math.min(dscFs,txtW/r);
+      if(r>0)dscFs=Math.min(dscFs,budget/r);
     });
     dscFs*=SAFE;
   }
@@ -204,7 +207,7 @@ function loadArtikel(nr){
 function getFmt(){return document.querySelector('input[name="fmt"]:checked').value;}
 document.querySelectorAll('input[name="fmt"]').forEach(function(r){r.addEventListener('change',function(){if(curA)renderPreview();});});
 
-/* Vorschau nutzt exakt dieselbe Berechnung, nur mit Skalierungsfaktor */
+/* Vorschau nutzt dieselbe Berechnung, nur skaliert */
 function renderPreview(){
   var a=curA,fkey=getFmt(),f=FMT[fkey];
   var L=calcLayout(a,f);
@@ -222,11 +225,10 @@ function renderPreview(){
   lqr.appendChild(qrDiv);label.appendChild(lqr);
 
   var ldiv=document.createElement('div');ldiv.className='ldiv';
-  ldiv.style.cssText='width:'+Math.max(1,px(L.dvd))+'px;margin:0 '+px(L.gap)+'px;flex:0 0 auto;';
+  ldiv.style.cssText='width:'+Math.max(1,px(L.dvd))+'px;margin:0 '+px(L.gap)+'px;';
   label.appendChild(ldiv);
 
   var ltxt=document.createElement('div');ltxt.className='ltxt';
-  ltxt.style.cssText='width:'+px(L.txtW)+'px;';
   var artEl=document.createElement('div');artEl.className='lart';
   artEl.textContent=a.nr;artEl.style.fontSize=px(L.artFs)+'px';
   ltxt.appendChild(artEl);
@@ -245,7 +247,7 @@ function renderPreview(){
   prevQR=new QRCode(qrDiv,{text:a.nr,width:qrPx,height:qrPx,correctLevel:QRCode.CorrectLevel.M});
 }
 
-/* QR-Code als PNG-DataURL erzeugen (im Hauptfenster, damit kein Timing-Problem) */
+/* QR-Code als PNG-DataURL erzeugen (im Hauptfenster, kein Timing-Problem) */
 function makeQR(text,px,cb){
   var tmp=document.createElement('div');
   tmp.style.cssText='position:absolute;left:-9999px;top:-9999px;';
@@ -276,13 +278,13 @@ function printLabel(){
     var css=[
       '*{box-sizing:border-box;margin:0;padding:0;}',
       '@page{size:'+pageW+' '+pageH+';margin:0;}',
-      'html,body{width:'+pageW+';height:'+pageH+';background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+      'html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
       '.page{position:relative;width:'+pageW+';height:'+pageH+';overflow:hidden;}',
-      '.wrap{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;display:flex;align-items:center;padding:'+f.padMm+'mm;background:#fff;font-family:Arial,Helvetica,sans-serif;}',
+      '.wrap{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;display:flex;align-items:center;padding:'+f.padMm+'mm;background:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden;}',
       '.qsec{width:'+f.qrMm+'mm;height:'+f.qrMm+'mm;flex:0 0 '+f.qrMm+'mm;}',
       '.qsec img{width:100%;height:100%;display:block;}',
       '.dvd{width:'+L.dvd+'mm;align-self:stretch;background:#999;margin:0 '+L.gap+'mm;flex:0 0 auto;}',
-      '.txt{width:'+L.txtW.toFixed(2)+'mm;overflow:hidden;}',
+      '.txt{flex:1 1 auto;min-width:0;overflow:hidden;}',
       '.art{font-weight:bold;line-height:'+LH_ART+';white-space:nowrap;font-size:'+L.artFs.toFixed(2)+'mm;}',
       '.dsc{line-height:'+LH_DSC+';color:#222;white-space:nowrap;font-size:'+L.dscFs.toFixed(2)+'mm;}',
       '.brd{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:.3mm solid #bbb;pointer-events:none;}'
