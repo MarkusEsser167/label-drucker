@@ -43,12 +43,12 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .info-val{font-size:.9em;background:#f7f7f7;border:1px solid #e0e0e0;border-radius:3px;padding:4px 8px;min-height:28px;color:#333;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .preview-box{background:#e4e4e4;border-radius:4px;padding:12px;display:flex;align-items:center;justify-content:center;min-height:180px;overflow:hidden;}
 .prev-ph{color:#aaa;font-size:.9em;}
-.label-dom{display:flex;align-items:stretch;background:white;font-family:Arial,sans-serif;border:1px solid #bbb;overflow:hidden;flex-shrink:0;}
+.label-dom{display:flex;align-items:center;background:white;font-family:Arial,sans-serif;border:1px solid #bbb;overflow:hidden;flex-shrink:0;}
 .label-dom .lqr{display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.label-dom .ldiv{background:#999;flex-shrink:0;}
+.label-dom .ldiv{background:#999;flex-shrink:0;align-self:stretch;}
 .label-dom .ltxt{display:flex;flex-direction:column;justify-content:center;overflow:hidden;}
-.label-dom .lart{font-weight:bold;line-height:1.1;white-space:nowrap;overflow:hidden;}
-.label-dom .ldesc{line-height:1.2;color:#333;white-space:nowrap;overflow:hidden;}
+.label-dom .lart{font-weight:bold;line-height:1.05;white-space:nowrap;}
+.label-dom .ldesc{line-height:1.25;color:#333;white-space:nowrap;}
 .cnt{font-size:.82em;color:#888;margin-top:8px;}
 </style>
 </head>
@@ -107,7 +107,41 @@ var FMT={
   gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
 };
 var PXMM=3.7795,PREVW=560,PREVH=420;
+var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97;
 var artikelMap={},curA=null,prevQR=null;
+
+/* ---------- Textbreiten-Messung via Canvas (aufloesungsunabhaengig) ---------- */
+var _cv=document.createElement('canvas'),_cx=_cv.getContext('2d');
+function widthRatio(txt,bold){
+  _cx.font=(bold?'bold ':'')+'100px Arial, Helvetica, sans-serif';
+  return _cx.measureText(String(txt)).width/100;
+}
+
+/* Berechnet Layout + Schriftgroessen in Millimetern - unabhaengig von Fenstergroesse */
+function calcLayout(a,f){
+  var gap=f.padMm/2;
+  var dvd=0.3;
+  var txtW=f.mmW-2*f.padMm-f.qrMm-2*gap-dvd;
+  var availH=f.mmH-2*f.padMm;
+  var descs=[a.z1,a.z2,a.z3].filter(Boolean);
+
+  var artBox=availH*ART_SHARE;
+  var dscBox=availH*(1-ART_SHARE);
+
+  var rA=widthRatio(a.nr,true);
+  var artFs=Math.min(artBox/LH_ART, rA>0?txtW/rA:artBox)*SAFE;
+
+  var dscFs=0;
+  if(descs.length){
+    dscFs=(dscBox/descs.length)/LH_DSC;
+    descs.forEach(function(t){
+      var r=widthRatio(t,false);
+      if(r>0)dscFs=Math.min(dscFs,txtW/r);
+    });
+    dscFs*=SAFE;
+  }
+  return {gap:gap,dvd:dvd,txtW:txtW,availH:availH,descs:descs,artFs:artFs,dscFs:dscFs};
+}
 
 async function loadData(){
   showSt('Lade Artikeldaten…','inf');
@@ -170,34 +204,37 @@ function loadArtikel(nr){
 function getFmt(){return document.querySelector('input[name="fmt"]:checked').value;}
 document.querySelectorAll('input[name="fmt"]').forEach(function(r){r.addEventListener('change',function(){if(curA)renderPreview();});});
 
+/* Vorschau nutzt exakt dieselbe Berechnung, nur mit Skalierungsfaktor */
 function renderPreview(){
   var a=curA,fkey=getFmt(),f=FMT[fkey];
-  var sc=Math.min(PREVW/(f.mmW*PXMM),PREVH/(f.mmH*PXMM),1.8)*0.88;
-  var W=Math.round(f.mmW*PXMM*sc),H=Math.round(f.mmH*PXMM*sc);
-  var pad=Math.round(f.padMm*PXMM*sc);
-  var qrSz=Math.min(Math.round(f.qrMm*PXMM*sc),H-2*pad);
-  var divW=Math.max(1,Math.round(0.3*PXMM*sc));
+  var L=calcLayout(a,f);
+  var sc=Math.min(PREVW/(f.mmW*PXMM),PREVH/(f.mmH*PXMM),1.8)*0.9;
+  var px=function(mm){return mm*PXMM*sc;};
 
   var label=document.createElement('div');label.className='label-dom';
-  label.style.cssText='width:'+W+'px;height:'+H+'px;';
+  label.style.cssText='width:'+px(f.mmW)+'px;height:'+px(f.mmH)+'px;padding:'+px(f.padMm)+'px;';
 
   var lqr=document.createElement('div');lqr.className='lqr';
-  lqr.style.cssText='width:'+(pad+qrSz+pad/2)+'px;padding:'+pad+'px;';
+  lqr.style.cssText='width:'+px(f.qrMm)+'px;height:'+px(f.qrMm)+'px;flex:0 0 '+px(f.qrMm)+'px;';
   var qrDiv=document.createElement('div');
-  qrDiv.style.cssText='width:'+qrSz+'px;height:'+qrSz+'px;';
+  var qrPx=Math.max(20,Math.round(px(f.qrMm)));
+  qrDiv.style.cssText='width:'+qrPx+'px;height:'+qrPx+'px;';
   lqr.appendChild(qrDiv);label.appendChild(lqr);
 
   var ldiv=document.createElement('div');ldiv.className='ldiv';
-  ldiv.style.cssText='width:'+divW+'px;margin:'+pad+'px 0;';
+  ldiv.style.cssText='width:'+Math.max(1,px(L.dvd))+'px;margin:0 '+px(L.gap)+'px;flex:0 0 auto;';
   label.appendChild(ldiv);
 
-  var txtW=W-(pad+qrSz+pad/2)-divW;
   var ltxt=document.createElement('div');ltxt.className='ltxt';
-  ltxt.style.cssText='width:'+txtW+'px;padding:'+pad+'px '+pad+'px;gap:'+Math.max(1,Math.round(pad*.3))+'px;';
-  var artEl=document.createElement('div');artEl.className='lart';artEl.textContent=a.nr;
+  ltxt.style.cssText='width:'+px(L.txtW)+'px;';
+  var artEl=document.createElement('div');artEl.className='lart';
+  artEl.textContent=a.nr;artEl.style.fontSize=px(L.artFs)+'px';
   ltxt.appendChild(artEl);
-  var descs=[a.z1,a.z2,a.z3].filter(Boolean);
-  var descEls=descs.map(function(t){var el=document.createElement('div');el.className='ldesc';el.textContent=t;ltxt.appendChild(el);return el;});
+  L.descs.forEach(function(t){
+    var el=document.createElement('div');el.className='ldesc';
+    el.textContent=t;el.style.fontSize=px(L.dscFs)+'px';
+    ltxt.appendChild(el);
+  });
   label.appendChild(ltxt);
 
   document.getElementById('prev-ph').style.display='none';
@@ -205,97 +242,73 @@ function renderPreview(){
   pl.innerHTML='';pl.appendChild(label);pl.style.display='block';
 
   if(prevQR){try{prevQR.clear();}catch(e){}}
-  prevQR=new QRCode(qrDiv,{text:a.nr,width:qrSz,height:qrSz,correctLevel:QRCode.CorrectLevel.M});
-  requestAnimationFrame(function(){fitPrevFonts(artEl,descEls,txtW-2*pad,H-2*pad);});
+  prevQR=new QRCode(qrDiv,{text:a.nr,width:qrPx,height:qrPx,correctLevel:QRCode.CorrectLevel.M});
 }
 
-function fitPrevFonts(artEl,descEls,maxW,maxH){
-  var aH=maxH*.44,dH=descEls.length?(maxH*.56)/descEls.length:0;
-  var fs=Math.round(maxH*.6);
-  artEl.style.fontSize=fs+'px';
-  while(fs>6&&(artEl.scrollWidth>maxW||artEl.offsetHeight>aH)){fs--;artEl.style.fontSize=fs+'px';}
-  if(descEls.length){
-    var ds=Math.round(maxH*.32);
-    descEls.forEach(function(el){el.style.fontSize=ds+'px';});
-    while(ds>5&&descEls.some(function(el){return el.scrollWidth>maxW||el.offsetHeight>dH;})){
-      ds--;descEls.forEach(function(el){el.style.fontSize=ds+'px';});
-    }
-  }
+/* QR-Code als PNG-DataURL erzeugen (im Hauptfenster, damit kein Timing-Problem) */
+function makeQR(text,px,cb){
+  var tmp=document.createElement('div');
+  tmp.style.cssText='position:absolute;left:-9999px;top:-9999px;';
+  document.body.appendChild(tmp);
+  new QRCode(tmp,{text:text,width:px,height:px,correctLevel:QRCode.CorrectLevel.M});
+  setTimeout(function(){
+    var c=tmp.querySelector('canvas');
+    var url=c?c.toDataURL('image/png'):'';
+    document.body.removeChild(tmp);
+    cb(url);
+  },60);
 }
 
 function printLabel(){
   if(!curA)return;
   var a=curA,fkey=getFmt(),f=FMT[fkey];
   var isKlein=(fkey==='klein');
-  var pw=f.mmW+'mm',ph=f.mmH+'mm';
-  var pageW=isKlein?pw:'210mm';
-  var pageH=isKlein?ph:'297mm';
-  var descs=[a.z1,a.z2,a.z3].filter(Boolean);
-  var dscHtml=descs.map(function(d){return '<div class="dsc">'+hEsc(d)+'</div>';}).join('');
-  var html='<!DOCTYPE html>\n<html lang="de"><head>\n<meta charset="UTF-8">\n'
-    +'<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>\n'
-    +'<style>\n'
-    +'*{box-sizing:border-box;margin:0;padding:0;}\n'
-    +'@page{size:'+pageW+' '+pageH+';margin:0;}\n'
-    +'html,body{width:'+pageW+';height:'+pageH+';overflow:hidden;background:white;}\n'
-    +'.page{position:relative;width:'+pageW+';height:'+pageH+';}\n'
-    +'.wrap{position:absolute;top:0;left:0;width:'+pw+';height:'+ph+';display:flex;align-items:stretch;'
-    +'padding:'+f.padMm+'mm;gap:'+(f.padMm/2).toFixed(1)+'mm;background:white;font-family:Arial,sans-serif;}\n'
-    +'.qsec{width:'+f.qrMm+'mm;min-width:'+f.qrMm+'mm;display:flex;align-items:center;justify-content:center;}\n'
-    +'.dvd{width:.3mm;background:#999;flex-shrink:0;margin:0;}\n'
-    +'.txt{flex:1;display:flex;flex-direction:column;justify-content:center;'
-    +'overflow:hidden;padding:'+(f.padMm/2).toFixed(1)+'mm;gap:'+(f.padMm*.25).toFixed(1)+'mm;}\n'
-    +'.art{font-weight:bold;line-height:1.1;overflow:hidden;white-space:nowrap;max-width:100%;}\n'
-    +'.dsc{line-height:1.25;color:#222;overflow:hidden;white-space:nowrap;max-width:100%;}\n'
-    +'.brd{position:absolute;top:0;left:0;width:'+pw+';height:'+ph+';border:.3mm solid #bbb;pointer-events:none;}\n'
-    +'<\/style><\/head>\n'
-    +'<body>\n'
-    +'<div class="page">\n'
-    +'<div class="wrap">\n'
-    +'  <div class="qsec"><div id="qr"><\/div><\/div>\n'
-    +'  <div class="dvd"><\/div>\n'
-    +'  <div class="txt"><div class="art" id="art">'+hEsc(a.nr)+'<\/div>'+dscHtml+'<\/div>\n'
-    +'<\/div>\n'
-    +'<div class="brd"><\/div>\n'
-    +'<\/div>\n'
-    +'<script>\n'
-    +'(function(){\n'
-    +'function fit(){\n'
-    +'  var txtEl=document.querySelector(".txt");\n'
-    +'  var cs=getComputedStyle(txtEl);\n'
-    +'  var padL=parseFloat(cs.paddingLeft)||0;\n'
-    +'  var padR=parseFloat(cs.paddingRight)||0;\n'
-    +'  var tw=txtEl.offsetWidth-padL-padR-2;\n'
-    +'  var th=txtEl.offsetHeight;\n'
-    +'  var art=document.getElementById("art");\n'
-    +'  var dscs=[].slice.call(document.querySelectorAll(".dsc"));\n'
-    +'  var aH=th*.44,dH=dscs.length?(th*.56)/dscs.length:0;\n'
-    +'  var fs=Math.round(th*.85);\n'
-    +'  art.style.fontSize=fs+"px";\n'
-    +'  while(fs>7&&(art.scrollWidth>tw||art.offsetHeight>aH)){fs--;art.style.fontSize=fs+"px";}\n'
-    +'  if(dscs.length){\n'
-    +'    var ds=Math.round(th*.42);\n'
-    +'    dscs.forEach(function(e){e.style.fontSize=ds+"px";});\n'
-    +'    while(ds>6&&dscs.some(function(e){return e.scrollWidth>tw||e.offsetHeight>dH;}))\n'
-    +'      {ds--;dscs.forEach(function(e){e.style.fontSize=ds+"px";});}\n'
-    +'  }\n'
-    +'}\n'
-    +'var qs=document.querySelector(".qsec");\n'
-    +'var sz=Math.round(Math.min(qs.offsetWidth,qs.offsetHeight)*.95);\n'
-    +'new QRCode(document.getElementById("qr"),{text:"'+jsEsc(a.nr)+'",width:sz,height:sz,correctLevel:QRCode.CorrectLevel.M});\n'
-    +'window.addEventListener("load",function(){\n'
-    +'  setTimeout(function(){fit();window.print();setTimeout(function(){window.close();},800);},400);\n'
-    +'});\n'
-    +'})();\n'
-    +'<\/script>\n<\/body><\/html>';
+  var L=calcLayout(a,f);
+  var pageW=isKlein?f.mmW+'mm':'210mm';
+  var pageH=isKlein?f.mmH+'mm':'297mm';
 
-  var w=window.open('','_blank','width=500,height=300');
-  if(!w){showSt('Pop-up blockiert – bitte im Browser erlauben.','err');return;}
-  w.document.write(html);w.document.close();
+  showSt('Erzeuge Druckansicht…','inf');
+  makeQR(a.nr,600,function(qrUrl){
+    var dscHtml=L.descs.map(function(d){
+      return '<div class="dsc">'+hEsc(d)+'</div>';
+    }).join('');
+
+    var css=[
+      '*{box-sizing:border-box;margin:0;padding:0;}',
+      '@page{size:'+pageW+' '+pageH+';margin:0;}',
+      'html,body{width:'+pageW+';height:'+pageH+';background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+      '.page{position:relative;width:'+pageW+';height:'+pageH+';overflow:hidden;}',
+      '.wrap{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;display:flex;align-items:center;padding:'+f.padMm+'mm;background:#fff;font-family:Arial,Helvetica,sans-serif;}',
+      '.qsec{width:'+f.qrMm+'mm;height:'+f.qrMm+'mm;flex:0 0 '+f.qrMm+'mm;}',
+      '.qsec img{width:100%;height:100%;display:block;}',
+      '.dvd{width:'+L.dvd+'mm;align-self:stretch;background:#999;margin:0 '+L.gap+'mm;flex:0 0 auto;}',
+      '.txt{width:'+L.txtW.toFixed(2)+'mm;overflow:hidden;}',
+      '.art{font-weight:bold;line-height:'+LH_ART+';white-space:nowrap;font-size:'+L.artFs.toFixed(2)+'mm;}',
+      '.dsc{line-height:'+LH_DSC+';color:#222;white-space:nowrap;font-size:'+L.dscFs.toFixed(2)+'mm;}',
+      '.brd{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:.3mm solid #bbb;pointer-events:none;}'
+    ].join('\n');
+
+    var html='<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Etikett '+hEsc(a.nr)+'</title><style>'
+      +css+'</style></head><body><div class="page"><div class="wrap">'
+      +'<div class="qsec">'+(qrUrl?'<img src="'+qrUrl+'" alt="">':'')+'</div>'
+      +'<div class="dvd"></div>'
+      +'<div class="txt"><div class="art">'+hEsc(a.nr)+'</div>'+dscHtml+'</div>'
+      +'</div>'+(isKlein?'':'<div class="brd"></div>')+'</div></body></html>';
+
+    var w=window.open('','_blank','width=760,height=520');
+    if(!w){showSt('Pop-up blockiert – bitte im Browser erlauben.','err');return;}
+    w.document.open();w.document.write(html);w.document.close();
+    setTimeout(function(){
+      try{w.focus();w.print();}catch(e){}
+      setTimeout(function(){try{w.close();}catch(e){}},1200);
+    },500);
+    showSt('✔ Druckansicht geöffnet','ok');
+    setTimeout(clearSt,2500);
+  });
 }
 
 function hEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-function jsEsc(s){return String(s).replace(/\\/g,'\\\\').replace(/"/g,'\\"');}
+function jsEsc(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/"/g,'\\"');}
 function showSt(msg,type){var el=document.getElementById('status');el.textContent=msg;el.className='status '+type;}
 function clearSt(){document.getElementById('status').className='status';}
 
