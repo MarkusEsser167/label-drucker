@@ -80,8 +80,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
     <div class="card" id="cal">
       <div class="card-title">Zebra-Etikett einmessen</div>
       <div class="cal-grid">
-        <div><label>Breite mm</label><input type="number" id="calW" step="0.5" min="10" max="120"></div>
-        <div><label>Höhe mm</label><input type="number" id="calH" step="0.5" min="10" max="120"></div>
+        <div><label>Breite mm</label><input type="number" id="calW" step="0.1" min="10" max="120"></div>
+        <div><label>Höhe mm</label><input type="number" id="calH" step="0.1" min="10" max="120"></div>
         <div><label>Rand mm</label><input type="number" id="calP" step="0.5" min="0" max="10"></div>
       </div>
       <button class="btn btn-sec" onclick="printFrame()">Rahmen-Testdruck</button>
@@ -132,9 +132,9 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 <script>
 var VERSION='v5';
 var CAL_UI=/[?&]cal=1/.test(location.search);   // Einmess-Bereich nur auf Anforderung
-var KLEIN_DEF={mmW:57,mmH:31,padMm:2};
+var KLEIN_DEF={mmW:57,mmH:30.9,padMm:2};        // eingemessenes Zebra-Etikett
 var FMT={
-  klein: {mmW:57,   mmH:31,    padMm:2, qrMm:20, artShare:0.30, wrap:true},
+  klein: {mmW:57,   mmH:30.9,  padMm:2, qrMm:20.5, artShare:0.30, wrap:true},
   mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
   gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
 };
@@ -155,12 +155,12 @@ function loadCal(){
   document.getElementById('calH').value=c.mmH;
   document.getElementById('calP').value=c.padMm;
   document.querySelector('.format-list label').lastChild.textContent=
-    ' Klein – '+c.mmW+' × '+c.mmH+' mm  (Zebra ZD421)';
+    ' Klein – '+String(c.mmW).replace('.',',')+' × '+String(c.mmH).replace('.',',')+' mm  (Zebra ZD421)';
 }
 function saveCal(){
   var c={
-    mmW:Math.max(10,+document.getElementById('calW').value||57),
-    mmH:Math.max(10,+document.getElementById('calH').value||31),
+    mmW:Math.max(10,+document.getElementById('calW').value||KLEIN_DEF.mmW),
+    mmH:Math.max(10,+document.getElementById('calH').value||KLEIN_DEF.mmH),
     padMm:Math.max(0,+document.getElementById('calP').value||0)
   };
   try{localStorage.setItem('zebraCal',JSON.stringify(c));}catch(e){}
