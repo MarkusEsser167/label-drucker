@@ -12,6 +12,7 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .topbar{background:#003366;color:white;padding:12px 20px;font-size:1.1em;font-weight:bold;display:flex;align-items:center;gap:10px;}
+.ver{margin-left:auto;font-size:.72em;font-weight:normal;opacity:.85;letter-spacing:.05em;}
 .main{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px;max-width:1200px;margin:0 auto;}
 @media(max-width:820px){.main{grid-template-columns:1fr;}}
 .col{display:flex;flex-direction:column;gap:12px;}
@@ -34,6 +35,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .btn-print{background:#006633;color:white;font-size:15px;padding:11px 28px;}
 .btn-print:hover{background:#008844;}
 .btn-print:disabled{background:#aaa;cursor:not-allowed;}
+.btn-sec{background:#eee;color:#333;border:1px solid #ccc;font-size:13px;padding:8px 14px;}
+.btn-sec:hover{background:#e0e0e0;}
 .status{padding:7px 11px;border-radius:4px;font-size:.87em;margin-top:8px;display:none;}
 .status.ok{display:block;background:#d4edda;color:#155724;}
 .status.err{display:block;background:#f8d7da;color:#721c24;}
@@ -51,20 +54,43 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .label-dom .ldesc{line-height:1.25;color:#333;white-space:nowrap;}
 .label-dom.wrap .ldesc{white-space:normal;overflow-wrap:break-word;}
 .cnt{font-size:.82em;color:#888;margin-top:8px;}
+#cal{display:none;}
+#cal.on{display:block;}
+.cal-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px;}
+.cal-grid label{font-size:.78em;font-weight:bold;color:#555;display:block;margin-bottom:3px;}
+.cal-grid input{width:100%;padding:6px 8px;font-size:14px;border:1px solid #ccc;border-radius:4px;}
+.cal-hint{font-size:.8em;color:#666;line-height:1.45;margin-top:8px;}
 </style>
 </head>
 <body>
-<div class="topbar">🏷️ Label Drucker – Wego Systembaustoffe</div>
+<div class="topbar">🏷️ Label Drucker – Wego Systembaustoffe <span class="ver">v4</span></div>
 <div class="main">
   <div class="col">
     <div class="card">
       <div class="card-title">Format</div>
       <div class="format-list">
-        <label><input type="radio" name="fmt" value="klein" checked> Klein – 57 × 31 mm &nbsp;(Zebra ZD421)</label>
+        <label><input type="radio" name="fmt" value="klein" checked> Klein – Zebra ZD421</label>
         <label><input type="radio" name="fmt" value="mittel"> Mittel – 210 × 90 mm &nbsp;(Laserdrucker)</label>
         <label><input type="radio" name="fmt" value="gross"> Groß – A5 210 × 148 mm &nbsp;(Laserdrucker)</label>
       </div>
     </div>
+
+    <div class="card" id="cal">
+      <div class="card-title">Zebra-Etikett einmessen</div>
+      <div class="cal-grid">
+        <div><label>Breite mm</label><input type="number" id="calW" step="0.5" min="10" max="120"></div>
+        <div><label>Höhe mm</label><input type="number" id="calH" step="0.5" min="10" max="120"></div>
+        <div><label>Rand mm</label><input type="number" id="calP" step="0.5" min="0" max="10"></div>
+      </div>
+      <button class="btn btn-sec" onclick="printFrame()">Rahmen-Testdruck</button>
+      <button class="btn btn-sec" onclick="resetCal()">Zurücksetzen</button>
+      <div class="cal-hint">
+        Der Testdruck druckt nur einen Rahmen in der eingestellten Größe.
+        Liegt der Rahmen exakt auf der Etikettkante, stimmen die Maße.
+        Wird er abgeschnitten, Breite/Höhe schrittweise verringern.
+      </div>
+    </div>
+
     <div class="card">
       <div class="card-title">Artikel suchen</div>
       <div class="search-row">
@@ -102,6 +128,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
   </div>
 </div>
 <script>
+var VERSION='v4';
+var KLEIN_DEF={mmW:57,mmH:31,padMm:2};
 var FMT={
   klein: {mmW:57,   mmH:31,    padMm:2, qrMm:20, artShare:0.30, wrap:true},
   mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
@@ -110,6 +138,40 @@ var FMT={
 var PXMM=3.7795,PREVW=560,PREVH=420;
 var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, MIN_FS=1.2;
 var artikelMap={},curA=null,prevQR=null;
+
+/* ---------- Zebra-Kalibrierung (im Browser gespeichert) ---------- */
+function loadCal(){
+  var c=KLEIN_DEF;
+  try{
+    var s=localStorage.getItem('zebraCal');
+    if(s){var p=JSON.parse(s);if(p&&p.mmW&&p.mmH)c={mmW:+p.mmW,mmH:+p.mmH,padMm:+p.padMm};}
+  }catch(e){}
+  FMT.klein.mmW=c.mmW;FMT.klein.mmH=c.mmH;FMT.klein.padMm=c.padMm;
+  FMT.klein.qrMm=Math.max(8,Math.min(c.mmW*0.36, c.mmH-2*c.padMm));
+  document.getElementById('calW').value=c.mmW;
+  document.getElementById('calH').value=c.mmH;
+  document.getElementById('calP').value=c.padMm;
+  document.querySelector('.format-list label').lastChild.textContent=
+    ' Klein – '+c.mmW+' × '+c.mmH+' mm  (Zebra ZD421)';
+}
+function saveCal(){
+  var c={
+    mmW:Math.max(10,+document.getElementById('calW').value||57),
+    mmH:Math.max(10,+document.getElementById('calH').value||31),
+    padMm:Math.max(0,+document.getElementById('calP').value||0)
+  };
+  try{localStorage.setItem('zebraCal',JSON.stringify(c));}catch(e){}
+  loadCal();
+  if(curA)renderPreview();
+}
+function resetCal(){
+  try{localStorage.removeItem('zebraCal');}catch(e){}
+  loadCal();
+  if(curA)renderPreview();
+}
+['calW','calH','calP'].forEach(function(id){
+  document.getElementById(id).addEventListener('change',saveCal);
+});
 
 /* ---------- Textbreiten-Messung via Canvas (aufloesungsunabhaengig) ---------- */
 var _cv=document.createElement('canvas'),_cx=_cv.getContext('2d'),_wc={};
@@ -122,8 +184,7 @@ function widthRatio(txt,bold){
   return v;
 }
 
-/* Zaehlt die Zeilen, die der Browser beim Umbruch an Wortgrenzen tatsaechlich
-   erzeugt - die frueher benutzte Schaetzung ueber die Gesamtbreite lag zu niedrig. */
+/* Zaehlt die Zeilen, die der Browser beim Umbruch an Wortgrenzen erzeugt */
 function wrapLineCount(txt,fs,maxW){
   var words=String(txt).split(/\s+/).filter(Boolean);
   if(!words.length)return 1;
@@ -131,7 +192,7 @@ function wrapLineCount(txt,fs,maxW){
   for(var i=0;i<words.length;i++){
     var w=words[i];
     var wW=widthRatio(w,false)*fs;
-    if(wW>maxW){                       // Einzelwort breiter als die Spalte
+    if(wW>maxW){
       if(cur){lines++;cur='';}
       lines+=Math.ceil(wW/maxW);
       continue;
@@ -150,15 +211,12 @@ function descHeight(descs,fs,maxW){
   return h;
 }
 
-/* Layout + Schriftgroessen in Millimetern - unabhaengig von Fenstergroesse.
-   Reserve haelt Breite frei, damit keine Zeile ueberlaeuft (Ueberlauf wuerde
-   im Druck "An Seite anpassen" ausloesen). */
 function calcLayout(a,f){
   var gap=f.padMm/2;
   var dvd=0.3;
   var reserve=f.wrap?0.8:1.5;
   var txtW=f.mmW-2*f.padMm-f.qrMm-2*gap-dvd;
-  var budget=txtW-reserve;
+  var budget=Math.max(2,txtW-reserve);
   var availH=f.mmH-2*f.padMm;
   var descs=[a.z1,a.z2,a.z3].filter(Boolean);
   var share=f.artShare||ART_SHARE;
@@ -172,7 +230,6 @@ function calcLayout(a,f){
     var room=availH-artH-(f.wrap?0.4:0);
     if(room<1)room=1;
     if(f.wrap){
-      /* groesste Schrift suchen, bei der alle umgebrochenen Zeilen in die Hoehe passen */
       var lo=MIN_FS, hi=room/LH_DSC;
       if(hi<lo)hi=lo;
       for(var it=0;it<18;it++){
@@ -248,9 +305,13 @@ function loadArtikel(nr){
 }
 
 function getFmt(){return document.querySelector('input[name="fmt"]:checked').value;}
-document.querySelectorAll('input[name="fmt"]').forEach(function(r){r.addEventListener('change',function(){if(curA)renderPreview();});});
+document.querySelectorAll('input[name="fmt"]').forEach(function(r){
+  r.addEventListener('change',function(){
+    document.getElementById('cal').className=(getFmt()==='klein')?'card on':'card';
+    if(curA)renderPreview();
+  });
+});
 
-/* Vorschau nutzt dieselbe Berechnung, nur skaliert */
 function renderPreview(){
   var a=curA,fkey=getFmt(),f=FMT[fkey];
   var L=calcLayout(a,f);
@@ -291,7 +352,6 @@ function renderPreview(){
   prevQR=new QRCode(qrDiv,{text:a.nr,width:qrPx,height:qrPx,correctLevel:QRCode.CorrectLevel.M});
 }
 
-/* QR-Code als PNG-DataURL erzeugen (im Hauptfenster, kein Timing-Problem) */
 function makeQR(text,px,cb){
   var tmp=document.createElement('div');
   tmp.style.cssText='position:absolute;left:-9999px;top:-9999px;';
@@ -303,6 +363,35 @@ function makeQR(text,px,cb){
     document.body.removeChild(tmp);
     cb(url);
   },60);
+}
+
+function openPrint(html,w,h){
+  var win=window.open('','_blank','width='+(w||760)+',height='+(h||520));
+  if(!win){showSt('Pop-up blockiert – bitte im Browser erlauben.','err');return null;}
+  win.document.open();win.document.write(html);win.document.close();
+  setTimeout(function(){
+    try{win.focus();win.print();}catch(e){}
+    setTimeout(function(){try{win.close();}catch(e){}},1200);
+  },500);
+  return win;
+}
+
+/* Rahmen-Testdruck: nur ein Rechteck in der eingestellten Groesse */
+function printFrame(){
+  var f=FMT.klein;
+  var css='*{box-sizing:border-box;margin:0;padding:0}'
+    +'@page{size:'+f.mmW+'mm '+f.mmH+'mm;margin:0}'
+    +'html,body{margin:0;padding:0;background:#fff}'
+    +'.p{position:relative;width:'+f.mmW+'mm;height:'+f.mmH+'mm;overflow:hidden}'
+    +'.b{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:.4mm solid #000}'
+    +'.c{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);'
+    +'font:bold 3mm Arial,Helvetica,sans-serif;text-align:center;white-space:nowrap}';
+  var html='<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Rahmen-Testdruck</title>'
+    +'<style>'+css+'</style></head><body><div class="p"><div class="b"></div>'
+    +'<div class="c">'+f.mmW+' &times; '+f.mmH+' mm</div></div></body></html>';
+  openPrint(html,420,300);
+  showSt('Rahmen-Testdruck gesendet','inf');
+  setTimeout(clearSt,2500);
 }
 
 function printLabel(){
@@ -342,13 +431,7 @@ function printLabel(){
       +'<div class="txt"><div class="art">'+hEsc(a.nr)+'</div>'+dscHtml+'</div>'
       +'</div>'+(isKlein?'':'<div class="brd"></div>')+'</div></body></html>';
 
-    var w=window.open('','_blank','width=760,height=520');
-    if(!w){showSt('Pop-up blockiert – bitte im Browser erlauben.','err');return;}
-    w.document.open();w.document.write(html);w.document.close();
-    setTimeout(function(){
-      try{w.focus();w.print();}catch(e){}
-      setTimeout(function(){try{w.close();}catch(e){}},1200);
-    },500);
+    openPrint(html,760,520);
     showSt('✔ Druckansicht geöffnet','ok');
     setTimeout(clearSt,2500);
   });
@@ -359,6 +442,8 @@ function jsEsc(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").rep
 function showSt(msg,type){var el=document.getElementById('status');el.textContent=msg;el.className='status '+type;}
 function clearSt(){document.getElementById('status').className='status';}
 
+loadCal();
+document.getElementById('cal').className=(getFmt()==='klein')?'card on':'card';
 loadData();
 if('serviceWorker'in navigator){
   window.addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){});});
