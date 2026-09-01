@@ -63,7 +63,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 </style>
 </head>
 <body>
-<div class="topbar">🏷️ Label Drucker – Wego Systembaustoffe <span class="ver">v4</span></div>
+<div class="topbar">🏷️ Label Drucker – Wego Systembaustoffe <span class="ver">v5</span></div>
 <div class="main">
   <div class="col">
     <div class="card">
@@ -75,6 +75,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
       </div>
     </div>
 
+    <!-- Einmess-Bereich: normalerweise ausgeblendet.
+         Bei Bedarf per URL-Zusatz ?cal=1 wieder einblenden. -->
     <div class="card" id="cal">
       <div class="card-title">Zebra-Etikett einmessen</div>
       <div class="cal-grid">
@@ -128,7 +130,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
   </div>
 </div>
 <script>
-var VERSION='v4';
+var VERSION='v5';
+var CAL_UI=/[?&]cal=1/.test(location.search);   // Einmess-Bereich nur auf Anforderung
 var KLEIN_DEF={mmW:57,mmH:31,padMm:2};
 var FMT={
   klein: {mmW:57,   mmH:31,    padMm:2, qrMm:20, artShare:0.30, wrap:true},
@@ -139,7 +142,7 @@ var PXMM=3.7795,PREVW=560,PREVH=420;
 var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, MIN_FS=1.2;
 var artikelMap={},curA=null,prevQR=null;
 
-/* ---------- Zebra-Kalibrierung (im Browser gespeichert) ---------- */
+/* ---------- Zebra-Masse (einmal eingemessen, im Browser gespeichert) ---------- */
 function loadCal(){
   var c=KLEIN_DEF;
   try{
@@ -172,6 +175,9 @@ function resetCal(){
 ['calW','calH','calP'].forEach(function(id){
   document.getElementById(id).addEventListener('change',saveCal);
 });
+function updateCalVisibility(){
+  document.getElementById('cal').className=(CAL_UI&&getFmt()==='klein')?'card on':'card';
+}
 
 /* ---------- Textbreiten-Messung via Canvas (aufloesungsunabhaengig) ---------- */
 var _cv=document.createElement('canvas'),_cx=_cv.getContext('2d'),_wc={};
@@ -307,7 +313,7 @@ function loadArtikel(nr){
 function getFmt(){return document.querySelector('input[name="fmt"]:checked').value;}
 document.querySelectorAll('input[name="fmt"]').forEach(function(r){
   r.addEventListener('change',function(){
-    document.getElementById('cal').className=(getFmt()==='klein')?'card on':'card';
+    updateCalVisibility();
     if(curA)renderPreview();
   });
 });
@@ -376,7 +382,7 @@ function openPrint(html,w,h){
   return win;
 }
 
-/* Rahmen-Testdruck: nur ein Rechteck in der eingestellten Groesse */
+/* Rahmen-Testdruck (nur im Einmess-Modus sichtbar) */
 function printFrame(){
   var f=FMT.klein;
   var css='*{box-sizing:border-box;margin:0;padding:0}'
@@ -443,7 +449,7 @@ function showSt(msg,type){var el=document.getElementById('status');el.textConten
 function clearSt(){document.getElementById('status').className='status';}
 
 loadCal();
-document.getElementById('cal').className=(getFmt()==='klein')?'card on':'card';
+updateCalVisibility();
 loadData();
 if('serviceWorker'in navigator){
   window.addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){});});
