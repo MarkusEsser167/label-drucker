@@ -29,10 +29,15 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 .ac-wrap{position:relative;flex:1;}
 .ac-wrap input{width:100%;padding:9px 12px;font-size:14px;border:1px solid #ccc;border-radius:4px;outline:none;}
 .ac-wrap input:focus{border-color:#003366;}
-.ac-list{position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #003366;border-top:none;border-radius:0 0 4px 4px;max-height:220px;overflow-y:auto;z-index:999;display:none;box-shadow:0 4px 8px rgba(0,0,0,.12);}
+.ac-list{position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #003366;border-top:none;border-radius:0 0 4px 4px;max-height:320px;overflow-y:auto;z-index:999;display:none;box-shadow:0 4px 8px rgba(0,0,0,.12);}
 .ac-list.open{display:block;}
-.ac-list div{padding:8px 12px;cursor:pointer;font-size:.9em;}
-.ac-list div:hover{background:#e8f0ff;}
+.ac-list .hit{padding:7px 12px;cursor:pointer;font-size:.88em;border-bottom:1px solid #f0f0f0;line-height:1.35;}
+.ac-list .hit:last-child{border-bottom:none;}
+.ac-list .hit:hover,.ac-list .hit.sel{background:#e8f0ff;}
+.ac-nr{font-weight:bold;color:#003366;}
+.ac-tx{color:#555;margin-left:8px;}
+.ac-more{padding:6px 12px;font-size:.8em;color:#888;background:#f7f7f7;border-top:1px solid #eee;}
+.search-hint{font-size:.78em;color:#888;margin-top:6px;line-height:1.4;}
 .btn{padding:9px 18px;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;}
 .btn-primary{background:#003366;color:white;}
 .btn-primary:hover{background:#004488;}
@@ -71,7 +76,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 <div class="topbar">
   <a class="back" href="./" title="Zurück zur Auswahl">←</a>
   🏷️ Einzeldruck
-  <span class="ver">v6</span>
+  <span class="ver">v7</span>
 </div>
 <div class="main">
   <div class="col">
@@ -107,10 +112,14 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
       <div class="card-title">Artikel suchen</div>
       <div class="search-row">
         <div class="ac-wrap">
-          <input type="text" id="srch" placeholder="Artikelnummer eingeben…" autocomplete="off" spellcheck="false">
+          <input type="text" id="srch" placeholder="Artikelnummer oder Suchbegriffe…" autocomplete="off" spellcheck="false">
           <div class="ac-list" id="acl"></div>
         </div>
         <button class="btn btn-primary" onclick="doSearch()">Suchen</button>
+      </div>
+      <div class="search-hint">
+        Mehrere Begriffe mit Leerzeichen trennen – es werden nur Artikel angezeigt,
+        auf die alle zutreffen. Umlaute sind unerheblich.
       </div>
       <div class="status" id="status"></div>
     </div>
@@ -140,7 +149,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
   </div>
 </div>
 <script>
-var VERSION='v6';
+var VERSION='v7';
 var CAL_UI=/[?&]cal=1/.test(location.search);   // Einmess-Bereich nur auf Anforderung
 var KLEIN_DEF={mmW:57,mmH:30.9,padMm:2};        // eingemessenes Zebra-Etikett
 var FMT={
@@ -151,7 +160,8 @@ var FMT={
 };
 var PXMM=3.7795,PREVW=560,PREVH=420;
 var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, MIN_FS=1.2;
-var artikelMap={},curA=null,prevQR=null;
+var MAX_HITS=50, SEARCH_DELAY=150;
+var artikelMap={},artikelListe=[],curA=null,prevQR=null;
 
 /* ---------- Zebra-Masse (einmal eingemessen, im Browser gespeichert) ---------- */
 function loadCal(){
@@ -188,6 +198,72 @@ function resetCal(){
 });
 function updateCalVisibility(){
   document.getElementById('cal').className=(CAL_UI&&getFmt()==='klein')?'card on':'card';
+}
+
+/* ================= Suche =================
+   Der Suchschluessel enthaelt Umlaute in beiden Schreibweisen, damit sowohl
+   "TÜR" als auch "tuer" denselben Artikel findet. */
+var UML_A={'ä':'a','ö':'o','ü':'u','ß':'ss'};
+var UML_B={'ä':'ae','ö':'oe','ü':'ue','ß':'ss'};
+
+function normA(s){
+  s=String(s).toLowerCase();
+  return /[äöüß]/.test(s)?s.replace(/[äöüß]/g,function(c){return UML_A[c];}):s;
+}
+function normB(s){
+  s=String(s).toLowerCase();
+  return s.replace(/[äöüß]/g,function(c){return UML_B[c];});
+}
+function buildKey(txt){
+  var a=normA(txt);
+  if(!/[äöüß]/.test(String(txt).toLowerCase()))return a;
+  var b=normB(txt);
+  return a+' '+b;
+}
+
+/* Sucht ueber Artikelnummer und alle drei Beschreibungszeilen.
+   Alle eingegebenen Begriffe muessen zutreffen (UND-Verknuepfung). */
+function suchen(query){
+  var raw=query.trim();
+  var terms=normA(raw).split(/\s+/).filter(Boolean);
+  if(!terms.length)return {treffer:[],gesamt:0};
+
+  // Bei einem einzelnen kurzen Begriff nur suchen, wenn er wie eine Nummer aussieht
+  if(terms.length===1&&terms[0].length<2&&!/^\d/.test(terms[0]))return {treffer:[],gesamt:0};
+
+  var nrPrefix=[],rest=[],gesamt=0;
+  var n=artikelListe.length;
+  for(var i=0;i<n;i++){
+    var a=artikelListe[i],ok=true;
+    for(var t=0;t<terms.length;t++){
+      if(a.key.indexOf(terms[t])<0){ok=false;break;}
+    }
+    if(!ok)continue;
+    gesamt++;
+    if(a.nr.indexOf(raw)===0){
+      if(nrPrefix.length<MAX_HITS)nrPrefix.push(a);
+    }else if(rest.length<MAX_HITS){
+      rest.push(a);
+    }
+  }
+  return {treffer:nrPrefix.concat(rest).slice(0,MAX_HITS),gesamt:gesamt};
+}
+
+function zeigeTreffer(res){
+  if(!res.treffer.length){acl.className='ac-list';acl.innerHTML='';return;}
+  var html=res.treffer.map(function(a){
+    var d=[a.z1,a.z2,a.z3].filter(Boolean).join(' · ');
+    return '<div class="hit" onclick="selectAC(\''+jsEsc(a.nr)+'\')">'
+      +'<span class="ac-nr">'+hEsc(a.nr)+'</span>'
+      +(d?'<span class="ac-tx">'+hEsc(d)+'</span>':'')
+      +'</div>';
+  }).join('');
+  if(res.gesamt>res.treffer.length){
+    html+='<div class="ac-more">… und '+(res.gesamt-res.treffer.length).toLocaleString('de-DE')
+      +' weitere Treffer – Suche weiter eingrenzen</div>';
+  }
+  acl.innerHTML=html;
+  acl.className='ac-list open';
 }
 
 /* ---------- Textbreiten-Messung via Canvas (aufloesungsunabhaengig) ---------- */
@@ -272,15 +348,23 @@ async function loadData(){
     var wb=XLSX.read(new Uint8Array(buf),{type:'array'});
     var ws=wb.Sheets[wb.SheetNames[0]];
     var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
-    artikelMap={};
+
+    showSt('Bereite Suche vor…','inf');
+    await new Promise(function(r){setTimeout(r,30);});
+
+    artikelMap={};artikelListe=[];
     for(var i=1;i<rows.length;i++){
       var nr=String(rows[i][0]||'').trim();
+      if(!nr)continue;
       var z1=String(rows[i][1]||'').trim();
       var z2=String(rows[i][2]||'').trim();
       var z3=String(rows[i][3]||'').trim();
-      if(nr)artikelMap[nr]={nr:nr,z1:z1,z2:z2,z3:z3};
+      var a={nr:nr,z1:z1,z2:z2,z3:z3};
+      a.key=buildKey(nr+' '+z1+' '+z2+' '+z3);
+      artikelMap[nr]=a;
+      artikelListe.push(a);
     }
-    var n=Object.keys(artikelMap).length;
+    var n=artikelListe.length;
     document.getElementById('cnt').textContent=n.toLocaleString('de-DE')+' Artikel geladen';
     showSt('✔ '+n.toLocaleString('de-DE')+' Artikel geladen','ok');
     setTimeout(clearSt,3000);
@@ -289,24 +373,38 @@ async function loadData(){
 
 var srch=document.getElementById('srch');
 var acl=document.getElementById('acl');
+var suchTimer=null;
+
 srch.addEventListener('input',function(){
+  if(suchTimer)clearTimeout(suchTimer);
   var t=srch.value.trim();
-  if(t.length<1){acl.className='ac-list';return;}
-  var hits=Object.keys(artikelMap).filter(function(k){return k.startsWith(t);}).sort().slice(0,80);
-  acl.innerHTML=hits.map(function(k){return '<div onclick="selectAC(\''+jsEsc(k)+'\')">'+k+'</div>';}).join('');
-  acl.className=hits.length?'ac-list open':'ac-list';
+  if(!t){acl.className='ac-list';acl.innerHTML='';return;}
+  suchTimer=setTimeout(function(){
+    zeigeTreffer(suchen(srch.value));
+  },SEARCH_DELAY);
 });
-srch.addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
+srch.addEventListener('keydown',function(e){
+  if(e.key==='Enter'){if(suchTimer)clearTimeout(suchTimer);doSearch();}
+  else if(e.key==='Escape'){acl.className='ac-list';}
+});
 document.addEventListener('click',function(e){if(!e.target.closest('.ac-wrap'))acl.className='ac-list';});
 
 function selectAC(nr){srch.value=nr;acl.className='ac-list';loadArtikel(nr);}
+
 function doSearch(){
   var t=srch.value.trim();if(!t)return;
   acl.className='ac-list';
-  if(artikelMap[t]){loadArtikel(t);return;}
-  var first=Object.keys(artikelMap).find(function(k){return k.startsWith(t);});
-  if(first){srch.value=first;loadArtikel(first);}
-  else showSt("'"+t+"' nicht gefunden.",'err');
+  if(artikelMap[t]){loadArtikel(t);return;}           // exakte Artikelnummer
+  var res=suchen(t);
+  if(res.treffer.length===1){                          // eindeutiger Treffer
+    srch.value=res.treffer[0].nr;
+    loadArtikel(res.treffer[0].nr);
+  }else if(res.treffer.length>1){                      // mehrere: Liste zeigen
+    zeigeTreffer(res);
+    showSt(res.gesamt.toLocaleString('de-DE')+' Treffer – bitte auswählen','inf');
+  }else{
+    showSt("Nichts gefunden zu '"+t+"'.",'err');
+  }
 }
 
 function loadArtikel(nr){
