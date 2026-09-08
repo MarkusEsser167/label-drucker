@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stapeldruck – Label Drucker</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4a0072">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
+.brandbar{background:#fff;padding:10px 20px;border-bottom:1px solid #e2e2e2;}
+.brandbar img{height:30px;display:block;}
+.topbar{background:#4a0072;color:white;padding:12px 20px;font-size:1.1em;font-weight:bold;display:flex;align-items:center;gap:12px;}
+.back{color:white;text-decoration:none;font-size:1.15em;line-height:1;opacity:.85;padding:2px 6px;border-radius:4px;}
+.back:hover{opacity:1;background:rgba(255,255,255,.15);}
+.ver{margin-left:auto;font-size:.72em;font-weight:normal;opacity:.85;letter-spacing:.05em;}
+.main{max-width:700px;margin:24px auto;padding:0 16px;display:flex;flex-direction:column;gap:14px;}
+.card{background:white;border-radius:6px;border:1px solid #ddd;padding:16px;}
+.card-title{font-size:.78em;font-weight:bold;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #eee;}
+.format-list{display:flex;flex-direction:column;gap:6px;}
+.format-list label{display:flex;align-items:center;gap:10px;cursor:pointer;padding:8px 10px;border:1px solid #ddd;border-radius:4px;font-weight:bold;font-size:.93em;}
+.format-list input[type=radio]{accent-color:#4a0072;width:16px;height:16px;}
+.info-box{background:#f3eaff;border:1px solid #c9a0e8;border-radius:5px;padding:14px;font-size:.95em;color:#3a0060;}
+.info-box strong{display:block;font-size:1.3em;margin-bottom:4px;}
+.fname{font-size:.86em;color:#5a2080;word-break:break-all;margin-bottom:2px;}
+.status{padding:8px 12px;border-radius:4px;font-size:.88em;display:none;margin-top:10px;}
+.status.ok{display:block;background:#d4edda;color:#155724;}
+.status.err{display:block;background:#f8d7da;color:#721c24;}
+.status.inf{display:block;background:#d1ecf1;color:#0c5460;}
+.status.warn{display:block;background:#fff3cd;color:#856404;}
+.btn{padding:10px 22px;border:none;border-radius:4px;cursor:pointer;font-size:14px;font-weight:bold;transition:background .15s;}
+.btn-print{background:#4a0072;color:white;font-size:16px;padding:13px 32px;}
+.btn-print:hover{background:#6a00aa;}
+.btn-print:disabled{background:#aaa;cursor:not-allowed;}
+.btn-cancel{background:#cc2200;color:white;padding:10px 20px;display:none;}
+.btn-cancel:hover{background:#ee3300;}
+.btn-file{background:#4a0072;color:white;}
+.btn-file:hover{background:#6a00aa;}
+.btn-sec{background:#fff;color:#333;border:1px solid #bbb;font-size:13px;padding:7px 14px;}
+.btn-sec:hover{background:#f0f0f0;}
+.btn-row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+.drop{border:2px dashed #c9a0e8;border-radius:6px;padding:24px 16px;text-align:center;background:#faf6ff;transition:background .15s,border-color .15s;}
+.drop.over{background:#efe0ff;border-color:#4a0072;}
+.drop-ico{font-size:2em;line-height:1;margin-bottom:8px;}
+.drop-txt{font-size:.95em;color:#3a0060;margin-bottom:12px;}
+.drop-hint{font-size:.78em;color:#777;margin-top:12px;line-height:1.5;}
+.preview{margin-top:10px;border-top:1px solid #d9bff0;padding-top:8px;font-size:.8em;color:#3a0060;}
+.preview-title{font-size:.92em;font-weight:bold;opacity:.75;margin-bottom:4px;}
+.preview table{width:100%;border-collapse:collapse;}
+.preview td{padding:3px 4px;border-bottom:1px solid #e8d8f5;vertical-align:top;}
+.preview td:first-child{font-weight:bold;white-space:nowrap;width:1%;padding-right:10px;}
+.unknown-box{background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:14px;font-size:.9em;color:#7a5c00;display:none;margin-top:12px;}
+.unknown-box.visible{display:block;}
+.unknown-list{font-family:monospace;font-size:.9em;background:#fffaf0;border:1px solid #f0dfae;border-radius:4px;padding:8px;margin-top:8px;max-height:110px;overflow-y:auto;line-height:1.6;}
+.progress-wrap{background:#e8e8e8;border-radius:4px;height:18px;overflow:hidden;margin-top:10px;display:none;}
+.progress-bar{height:100%;background:#4a0072;width:0%;transition:width .3s;border-radius:4px;}
+.progress-txt{font-size:.82em;color:#555;margin-top:4px;display:none;}
+.log{background:#f7f7f7;border:1px solid #ddd;border-radius:4px;padding:10px;max-height:160px;overflow-y:auto;font-size:.82em;font-family:monospace;color:#444;display:none;margin-top:10px;}
+.log.visible{display:block;}
+.warn-box{background:#fff3cd;border:1px solid #ffc107;border-radius:5px;padding:12px;font-size:.9em;color:#7a5c00;display:none;margin-bottom:12px;}
+.warn-box.visible{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+</style>
+</head>
+<body>
+<div class="brandbar"><img src="logo.svg" alt="wego vti"></div>
+<div class="topbar">
+  <a class="back" href="./" title="Zurück zur Auswahl">←</a>
+  📦 Stapeldruck
+  <span class="ver">v7</span>
+</div>
+<div class="main">
+  <div class="card">
+    <div class="card-title">Format</div>
+    <div class="format-list">
+      <label><input type="radio" name="fmt" value="klein" checked> Klein – 57 × 30,9 mm &nbsp;(Zebra ZD421)</label>
+      <label><input type="radio" name="fmt" value="mittel"> Mittel – 210 × 90 mm &nbsp;(Laserdrucker)</label>
+      <label><input type="radio" name="fmt" value="gross"> Groß – A5 210 × 148 mm &nbsp;(Laserdrucker)</label>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Artikeldaten</div>
+
+    <div class="drop" id="drop">
+      <div class="drop-ico">📄</div>
+      <div class="drop-txt">Excel- oder CSV-Datei hierher ziehen</div>
+      <button class="btn btn-file" onclick="document.getElementById('file').click()">Datei wählen</button>
+      <input type="file" id="file" accept=".xlsx,.xls,.csv" style="display:none">
+      <div class="drop-hint">
+        Nur Artikelnummern in Spalte A genügen – die Beschreibungen werden
+        aus der Gesamtliste ergänzt.<br>
+        Alternativ Spalte A: Artikelnummer &nbsp;·&nbsp; Spalten B, C, D: Beschreibungszeilen 1–3.<br>
+        Eine Überschriftenzeile wird automatisch erkannt und übersprungen.
+      </div>
+    </div>
+
+    <div class="info-box" id="info-box" style="display:none;">
+      <div class="fname" id="fname"></div>
+      <strong id="art-count">0 Artikel</strong>
+      <span id="art-detail"></span>
+      <div class="preview" id="preview"></div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button class="btn btn-sec" onclick="resetFile()">Andere Datei wählen</button>
+      </div>
+    </div>
+
+    <div class="unknown-box" id="unknown-box">
+      <div id="unknown-txt"></div>
+      <div class="unknown-list" id="unknown-list"></div>
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn btn-sec" onclick="keepUnknown()">Trotzdem drucken</button>
+        <button class="btn btn-sec" onclick="dropUnknown()">Überspringen</button>
+      </div>
+    </div>
+
+    <div class="status" id="load-status"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Stapeldruck</div>
+    <div class="warn-box" id="warn-box">
+      ⚠️ <span id="warn-txt"></span>
+      <button class="btn btn-print" id="btn-confirm" onclick="startPrint()">Ja, jetzt drucken</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-print" id="btn-start" onclick="confirmPrint()" disabled>🖨 Etiketten drucken</button>
+      <button class="btn btn-cancel" id="btn-cancel" onclick="cancelPrint()">✕ Abbrechen</button>
+    </div>
+    <div class="progress-wrap" id="prog-wrap"><div class="progress-bar" id="prog-bar"></div></div>
+    <div class="progress-txt" id="prog-txt"></div>
+    <div class="status" id="print-status"></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+var VERSION='v7';
+var FMT={
+  klein: {mmW:57,   mmH:30.9,  padMm:2, qrMm:20.5, artShare:0.30, wrap:true},
+  mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
+  gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
+};
+var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, MIN_FS=1.2;
+var WARN_COUNT=500;
+
+var artikel=[],cancelled=false,fileName='';
+var stammExact=null,stammLoose=null;   // Nachschlagewerk, einmal pro Sitzung
+var unknownList=[];                    // nicht gefundene Artikelnummern
+var enriched=false;                    // wurden Beschreibungen ergaenzt?
+
+/* ================= Datei einlesen ================= */
+
+var dropEl=document.getElementById('drop');
+var fileEl=document.getElementById('file');
+
+fileEl.addEventListener('change',function(){
+  if(fileEl.files&&fileEl.files[0])handleFile(fileEl.files[0]);
+});
+
+['dragenter','dragover'].forEach(function(ev){
+  dropEl.addEventListener(ev,function(e){
+    e.preventDefault();e.stopPropagation();
+    dropEl.className='drop over';
+  });
+});
+['dragleave','drop'].forEach(function(ev){
+  dropEl.addEventListener(ev,function(e){
+    e.preventDefault();e.stopPropagation();
+    dropEl.className='drop';
+  });
+});
+dropEl.addEventListener('drop',function(e){
+  var dt=e.dataTransfer;
+  if(dt&&dt.files&&dt.files[0])handleFile(dt.files[0]);
+});
+
+/* Zeichensatz-Erkennung: erst UTF-8, bei ungueltigen Bytes Windows-1252 */
+function decodeText(buf){
+  var b=new Uint8Array(buf);
+  if(b.length>2&&b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF){
+    return new TextDecoder('utf-8').decode(buf);
+  }
+  try{
+    return new TextDecoder('utf-8',{fatal:true}).decode(buf);
+  }catch(e){
+    return new TextDecoder('windows-1252').decode(buf);
+  }
+}
+
+function guessSep(text){
+  var line=(text.split(/\r?\n/)[0])||'';
+  var semi=(line.match(/;/g)||[]).length;
+  var comma=(line.match(/,/g)||[]).length;
+  var tab=(line.match(/\t/g)||[]).length;
+  if(tab>semi&&tab>comma)return '\t';
+  return semi>=comma?';':',';
+}
+
+/* Eigener CSV-Parser: alle Felder als Text, fuehrende Nullen bleiben erhalten */
+function parseCsv(text,sep){
+  var rows=[],row=[],cur='',inQ=false;
+  for(var i=0;i<text.length;i++){
+    var c=text.charAt(i);
+    if(inQ){
+      if(c==='"'){
+        if(text.charAt(i+1)==='"'){cur+='"';i++;}
+        else inQ=false;
+      }else cur+=c;
+    }else{
+      if(c==='"')inQ=true;
+      else if(c===sep){row.push(cur);cur='';}
+      else if(c==='\n'){row.push(cur);cur='';rows.push(row);row=[];}
+      else if(c==='\r'){}
+      else cur+=c;
+    }
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row);}
+  return rows;
+}
+
+function handleFile(file){
+  fileEl.value='';
+  var isCsv=/\.csv$/i.test(file.name);
+  setSt('load-status','Lese '+file.name+' …','inf');
+  document.getElementById('unknown-box').className='unknown-box';
+
+  var reader=new FileReader();
+  reader.onerror=function(){setSt('load-status','Datei konnte nicht gelesen werden.','err');};
+  reader.onload=function(ev){
+    var rows;
+    try{
+      if(isCsv){
+        var text=decodeText(ev.target.result);
+        rows=parseCsv(text,guessSep(text));
+      }else{
+        var wb=XLSX.read(new Uint8Array(ev.target.result),{type:'array'});
+        var ws=wb.Sheets[wb.SheetNames[0]];
+        rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      }
+    }catch(e){
+      setSt('load-status','Fehler beim Lesen: '+e.message,'err');
+      return;
+    }
+    applyRows(rows,file.name);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function isPlainNumber(v){return /^\d+$/.test(String(v==null?'':v).trim());}
+function cell(r,i){return String(r[i]==null?'':r[i]).trim();}
+
+/* Schluessel fuer den Abgleich: exakt und tolerant (ohne Leerzeichen und fuehrende Nullen) */
+function normKey(s){return String(s).trim().toUpperCase();}
+function looseKey(s){return normKey(s).replace(/\s+/g,'').replace(/^0+/,'');}
+
+async function applyRows(rows,name){
+  if(!rows||!rows.length){
+    setSt('load-status','Die Datei enthält keine Zeilen.','err');
+    return;
+  }
+
+  var start=isPlainNumber(rows[0][0])?0:1;
+
+  artikel=[];
+  for(var i=start;i<rows.length;i++){
+    var r=rows[i]||[];
+    var nr=cell(r,0);
+    if(!nr)continue;
+    artikel.push({nr:nr,z1:cell(r,1),z2:cell(r,2),z3:cell(r,3),found:true});
+  }
+
+  if(!artikel.length){
+    setSt('load-status','In der Datei wurde keine Artikelnummer in Spalte A gefunden.','err');
+    return;
+  }
+
+  fileName=name;
+  unknownList=[];
+  enriched=false;
+
+  // Reine Nummernliste? Dann Beschreibungen aus der Gesamtliste ergaenzen.
+  var hasDesc=artikel.some(function(a){return a.z1||a.z2||a.z3;});
+  if(!hasDesc){
+    try{
+      await ensureStamm();
+    }catch(e){
+      setSt('load-status','Stammdaten konnten nicht geladen werden: '+e.message,'err');
+      return;
+    }
+    enrich();
+    enriched=true;
+  }
+
+  if(unknownList.length){
+    showUnknown();
+  }else{
+    finalize();
+  }
+}
+
+/* Gesamtliste einmal pro Sitzung laden und als Nachschlagewerk aufbauen */
+async function ensureStamm(){
+  if(stammExact)return;
+  setSt('load-status','Nummernliste erkannt – lade Stammdaten, das dauert einen Moment …','inf');
+  await new Promise(function(r){setTimeout(r,60);});
+
+  var res=await fetch('./data/artikel.xlsx');
+  if(!res.ok)throw new Error('HTTP '+res.status);
+  var buf=await res.arrayBuffer();
+
+  setSt('load-status','Stammdaten werden ausgewertet …','inf');
+  await new Promise(function(r){setTimeout(r,60);});
+
+  var wb=XLSX.read(new Uint8Array(buf),{type:'array'});
+  var ws=wb.Sheets[wb.SheetNames[0]];
+  var rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+
+  stammExact={};stammLoose={};
+  for(var i=1;i<rows.length;i++){
+    var r=rows[i]||[];
+    var nr=cell(r,0);
+    if(!nr)continue;
+    var rec={z1:cell(r,1),z2:cell(r,2),z3:cell(r,3)};
+    var k=normKey(nr);
+    if(stammExact[k]===undefined)stammExact[k]=rec;
+    var lk=looseKey(nr);
+    if(stammLoose[lk]===undefined)stammLoose[lk]=rec;
+  }
+}
+
+function enrich(){
+  unknownList=[];
+  for(var i=0;i<artikel.length;i++){
+    var a=artikel[i];
+    var rec=stammExact[normKey(a.nr)];
+    if(!rec)rec=stammLoose[looseKey(a.nr)];
+    if(rec){
+      a.z1=rec.z1;a.z2=rec.z2;a.z3=rec.z3;a.found=true;
+    }else{
+      a.found=false;
+      unknownList.push(a.nr);
+    }
+  }
+}
+
+function showUnknown(){
+  var n=unknownList.length;
+  var ok=artikel.length-n;
+  document.getElementById('unknown-txt').innerHTML=
+    '<strong>'+n.toLocaleString('de-DE')+' von '+artikel.length.toLocaleString('de-DE')
+    +' Artikelnummern wurden in der Gesamtliste nicht gefunden.</strong><br>'
+    +'Zugeordnet: '+ok.toLocaleString('de-DE')+'. Wie soll damit umgegangen werden?';
+  var head=unknownList.slice(0,10).map(hEsc).join('<br>');
+  document.getElementById('unknown-list').innerHTML=
+    head+(n>10?'<br>… und '+(n-10).toLocaleString('de-DE')+' weitere':'');
+  document.getElementById('unknown-box').className='unknown-box visible';
+  document.getElementById('btn-start').disabled=true;
+  setSt('load-status','Bitte entscheiden, wie mit den unbekannten Nummern verfahren wird.','warn');
+}
+
+function keepUnknown(){
+  document.getElementById('unknown-box').className='unknown-box';
+  finalize();
+}
+
+function dropUnknown(){
+  artikel=artikel.filter(function(a){return a.found;});
+  document.getElementById('unknown-box').className='unknown-box';
+  if(!artikel.length){
+    setSt('load-status','Es bleibt kein Artikel übrig – keine der Nummern war in der Gesamtliste.','err');
+    document.getElementById('btn-start').disabled=true;
+    return;
+  }
+  finalize();
+}
+
+function finalize(){
+  var n=artikel.length;
+  var missing=artikel.filter(function(a){return !a.found;}).length;
+
+  document.getElementById('drop').style.display='none';
+  document.getElementById('info-box').style.display='block';
+  document.getElementById('fname').textContent='Datei: '+fileName;
+  document.getElementById('art-count').textContent=n.toLocaleString('de-DE')+' Artikel';
+
+  var detail;
+  if(enriched){
+    detail='Beschreibungen aus der Gesamtliste ergänzt.';
+    if(missing)detail+=' '+missing.toLocaleString('de-DE')+' davon ohne Beschreibung.';
+  }else{
+    detail='Beschreibungen aus der Datei übernommen.';
+  }
+  document.getElementById('art-detail').textContent=detail;
+
+  renderPreview();
+  setSt('load-status','✔ '+n.toLocaleString('de-DE')+' Artikel bereit','ok');
+  document.getElementById('btn-start').disabled=false;
+}
+
+function renderPreview(){
+  var rowsHtml=artikel.slice(0,3).map(function(a){
+    var d=[a.z1,a.z2,a.z3].filter(Boolean).join(' · ');
+    if(!d)d='<span style="opacity:.6">— keine Beschreibung —</span>';
+    else d=hEsc(d);
+    return '<tr><td>'+hEsc(a.nr)+'</td><td>'+d+'</td></tr>';
+  }).join('');
+  var more=artikel.length>3?'<div style="opacity:.7;margin-top:4px;">… und '
+    +(artikel.length-3).toLocaleString('de-DE')+' weitere</div>':'';
+  document.getElementById('preview').innerHTML=
+    '<div class="preview-title">Kontrolle der ersten Zeilen</div>'
+    +'<table>'+rowsHtml+'</table>'+more;
+}
+
+function resetFile(){
+  artikel=[];fileName='';unknownList=[];enriched=false;
+  document.getElementById('info-box').style.display='none';
+  document.getElementById('drop').style.display='';
+  document.getElementById('preview').innerHTML='';
+  document.getElementById('unknown-box').className='unknown-box';
+  document.getElementById('btn-start').disabled=true;
+  document.getElementById('btn-start').style.display='';
+  document.getElementById('warn-box').className='warn-box';
+  document.getElementById('load-status').className='status';
+  document.getElementById('print-status').className='status';
+  document.getElementById('log').className='log';
+  // stammExact bleibt erhalten - kein erneutes Laden in dieser Sitzung
+}
+
+/* ================= Textbreiten-Messung via Canvas ================= */
+var _cv=document.createElement('canvas'),_cx=_cv.getContext('2d'),_wc={};
+function widthRatio(txt,bold){
+  var key=(bold?'b|':'n|')+txt;
+  if(_wc[key]!==undefined)return _wc[key];
+  _cx.font=(bold?'bold ':'')+'100px Arial, Helvetica, sans-serif';
+  var v=_cx.measureText(String(txt)).width/100;
+  _wc[key]=v;
+  return v;
+}
+
+function wrapLineCount(txt,fs,maxW){
+  var words=String(txt).split(/\s+/).filter(Boolean);
+  if(!words.length)return 1;
+  var lines=0,cur='';
+  for(var i=0;i<words.length;i++){
+    var w=words[i];
+    var wW=widthRatio(w,false)*fs;
+    if(wW>maxW){
+      if(cur){lines++;cur='';}
+      lines+=Math.ceil(wW/maxW);
+      continue;
+    }
+    var test=cur?cur+' '+w:w;
+    if(widthRatio(test,false)*fs<=maxW){cur=test;}
+    else{lines++;cur=w;}
+  }
+  if(cur)lines++;
+  return Math.max(1,lines);
+}
+
+function descHeight(descs,fs,maxW){
+  var h=0;
+  for(var i=0;i<descs.length;i++)h+=wrapLineCount(descs[i],fs,maxW)*fs*LH_DSC;
+  return h;
+}
+
+function calcLayout(a,f){
+  var gap=f.padMm/2;
+  var dvd=0.3;
+  var reserve=f.wrap?0.8:1.5;
+  var txtW=f.mmW-2*f.padMm-f.qrMm-2*gap-dvd;
+  var budget=Math.max(2,txtW-reserve);
+  var availH=f.mmH-2*f.padMm;
+  var descs=[a.z1,a.z2,a.z3].filter(Boolean);
+  var share=f.artShare||ART_SHARE;
+
+  var rA=widthRatio(a.nr,true);
+  var artFs=Math.min((availH*share)/LH_ART, rA>0?budget/rA:availH*share)*SAFE;
+  var artH=artFs*LH_ART;
+
+  var dscFs=0;
+  if(descs.length){
+    var room=availH-artH-(f.wrap?0.4:0);
+    if(room<1)room=1;
+    if(f.wrap){
+      var lo=MIN_FS, hi=room/LH_DSC;
+      if(hi<lo)hi=lo;
+      for(var it=0;it<18;it++){
+        var mid=(lo+hi)/2;
+        if(descHeight(descs,mid,budget)<=room)lo=mid; else hi=mid;
+      }
+      dscFs=Math.max(MIN_FS,lo*0.98);
+    }else{
+      dscFs=(room/descs.length)/LH_DSC;
+      descs.forEach(function(t){var r=widthRatio(t,false);if(r>0)dscFs=Math.min(dscFs,budget/r);});
+      dscFs*=SAFE;
+    }
+  }
+  return {gap:gap,dvd:dvd,txtW:txtW,availH:availH,descs:descs,artFs:artFs,dscFs:dscFs,wrap:!!f.wrap};
+}
+
+/* ================= Druck ================= */
+
+function confirmPrint(){
+  if(!artikel.length)return;
+  var n=artikel.length;
+  var t='Es werden '+n.toLocaleString('de-DE')+' Etiketten aus „'+fileName+'" in einem Druckjob gesendet. '
+       +'Bitte Drucker und Format prüfen.';
+  var missing=artikel.filter(function(a){return !a.found;}).length;
+  if(missing)t+=' '+missing.toLocaleString('de-DE')+' davon ohne Beschreibung.';
+  if(n>WARN_COUNT){
+    t+=' Bei dieser Menge dauert die Vorbereitung mehrere Minuten – das Fenster solange offen lassen.';
+  }
+  document.getElementById('warn-txt').textContent=t;
+  document.getElementById('warn-box').className='warn-box visible';
+  document.getElementById('btn-start').style.display='none';
+}
+
+function cancelPrint(){
+  cancelled=true;
+  document.getElementById('btn-cancel').style.display='none';
+  setSt('print-status','Abgebrochen.','warn');
+  document.getElementById('prog-wrap').style.display='none';
+  document.getElementById('prog-txt').style.display='none';
+  document.getElementById('btn-start').style.display='';
+  document.getElementById('btn-start').disabled=false;
+  document.getElementById('warn-box').className='warn-box';
+}
+
+async function startPrint(){
+  document.getElementById('warn-box').className='warn-box';
+  document.getElementById('btn-start').style.display='none';
+  document.getElementById('btn-cancel').style.display='';
+  document.getElementById('prog-wrap').style.display='block';
+  document.getElementById('prog-txt').style.display='block';
+  document.getElementById('log').className='log visible';
+  setSt('print-status','Generiere Labels…','inf');
+  cancelled=false;
+  clearLog();
+
+  addLog('Datei: '+fileName+' · '+artikel.length+' Etiketten');
+  if(unknownList.length){
+    addLog('⚠ '+unknownList.length+' Nummern ohne Eintrag in der Gesamtliste:');
+    addLog(unknownList.join(', '));
+  }
+
+  var fkey=document.querySelector('input[name="fmt"]:checked').value;
+  var f=FMT[fkey];
+  var isKlein=(fkey==='klein');
+  var total=artikel.length;
+  var errors=[];
+
+  var qrDataUrls=[];
+  var tmpDiv=document.createElement('div');
+  tmpDiv.style.cssText='position:absolute;left:-9999px;top:-9999px;';
+  document.body.appendChild(tmpDiv);
+
+  for(var i=0;i<total;i++){
+    if(cancelled)break;
+    var a=artikel[i];
+    try{
+      tmpDiv.innerHTML='';
+      new QRCode(tmpDiv,{text:a.nr,width:300,height:300,correctLevel:QRCode.CorrectLevel.M});
+      await new Promise(function(r){setTimeout(r,30);});
+      var canvas=tmpDiv.querySelector('canvas');
+      qrDataUrls.push(canvas?canvas.toDataURL('image/png'):'');
+    }catch(e){
+      qrDataUrls.push('');
+      errors.push('QR-Fehler '+a.nr+': '+e.message);
+      addLog('⚠ QR-Fehler: '+a.nr);
+    }
+    setProgress(Math.round((i+1)/total*50),'QR-Codes: '+(i+1)+'/'+total);
+  }
+  document.body.removeChild(tmpDiv);
+
+  if(cancelled){return;}
+
+  setProgress(50,'Erstelle Druckdokument…');
+  addLog('Generiere Druckdokument…');
+
+  var pages='';
+  var L0=null;
+  for(var i=0;i<total;i++){
+    if(cancelled)break;
+    var a=artikel[i];
+    var L=calcLayout(a,f);
+    if(!L0)L0=L;
+    var qrSrc=qrDataUrls[i]||'';
+    var dHtml=L.descs.map(function(d){return '<div class="dsc" style="font-size:'+L.dscFs.toFixed(2)+'mm">'+hEsc(d)+'</div>';}).join('');
+    var isLast=(i===total-1);
+    pages+='<div class="page"'+(isLast?'':' style="page-break-after:always"')+'>'
+      +'<div class="wrap">'
+      +'<div class="qsec">'+(qrSrc?'<img src="'+qrSrc+'" alt="">':'')+'</div>'
+      +'<div class="dvd"></div>'
+      +'<div class="txt">'
+      +'<div class="art" style="font-size:'+L.artFs.toFixed(2)+'mm">'+hEsc(a.nr)+'</div>'+dHtml
+      +'</div></div>'
+      +(isKlein?'':'<div class="brd"></div>')
+      +'</div>';
+    if(i%50===0){
+      setProgress(50+Math.round((i+1)/total*40),'Seiten: '+(i+1)+'/'+total);
+      await new Promise(function(r){setTimeout(r,0);});
+    }
+  }
+
+  if(cancelled)return;
+
+  var pageW=isKlein?f.mmW+'mm':'210mm';
+  var pageH=isKlein?f.mmH+'mm':'297mm';
+  var css=[
+    '*{box-sizing:border-box;margin:0;padding:0;}',
+    '@page{size:'+pageW+' '+pageH+';margin:0;}',
+    'html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.page{position:relative;width:'+pageW+';height:'+pageH+';overflow:hidden;}',
+    '.wrap{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;display:flex;align-items:center;padding:'+f.padMm+'mm;background:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden;}',
+    '.qsec{width:'+f.qrMm+'mm;height:'+f.qrMm+'mm;flex:0 0 '+f.qrMm+'mm;overflow:hidden;}',
+    '.qsec img{width:'+f.qrMm+'mm;height:'+f.qrMm+'mm;display:block;}',
+    '.dvd{width:'+L0.dvd+'mm;align-self:stretch;background:#999;margin:0 '+L0.gap+'mm;flex:0 0 auto;}',
+    '.txt{flex:1 1 auto;min-width:0;max-height:'+(f.mmH-2*f.padMm).toFixed(2)+'mm;overflow:hidden;}',
+    '.art{font-weight:bold;line-height:'+LH_ART+';white-space:nowrap;}',
+    '.dsc{line-height:'+LH_DSC+';color:#222;'
+      +(L0.wrap?'white-space:normal;overflow-wrap:break-word;':'white-space:nowrap;')+'}',
+    '.brd{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:.3mm solid #bbb;pointer-events:none;}'
+  ].join('\n');
+
+  var html='<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Etiketten</title><style>'
+    +css+'</style></head><body>'+pages+'</body></html>';
+
+  setProgress(95,'Öffne Druckfenster…');
+  var w=window.open('','_blank');
+  if(!w){
+    setSt('print-status','Pop-up blockiert – bitte im Browser erlauben.','err');
+    document.getElementById('btn-cancel').style.display='none';
+    document.getElementById('btn-start').style.display='';
+    document.getElementById('btn-start').disabled=false;
+    return;
+  }
+  w.document.open();w.document.write(html);w.document.close();
+  setTimeout(function(){
+    try{w.focus();w.print();}catch(e){}
+  },800);
+
+  setProgress(100,'Fertig!');
+  setSt('print-status','✔ '+total.toLocaleString('de-DE')+' Etiketten an Drucker gesendet.'+(errors.length?' ('+errors.length+' Fehler)':''),'ok');
+  addLog('✔ Druckjob gesendet: '+total+' Etiketten'+(errors.length?' | '+errors.length+' Fehler':''));
+  document.getElementById('btn-cancel').style.display='none';
+  document.getElementById('btn-start').style.display='';
+  document.getElementById('btn-start').disabled=false;
+  document.getElementById('warn-box').className='warn-box';
+}
+
+function setProgress(pct,txt){
+  document.getElementById('prog-bar').style.width=pct+'%';
+  document.getElementById('prog-txt').textContent=txt;
+}
+function setSt(id,msg,type){var el=document.getElementById(id);el.textContent=msg;el.className='status '+type;}
+function addLog(msg){var l=document.getElementById('log');l.innerHTML+=hEsc(msg)+'<br>';l.scrollTop=l.scrollHeight;}
+function clearLog(){document.getElementById('log').innerHTML='';}
+function hEsc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+if('serviceWorker'in navigator){
+  window.addEventListener('load',function(){navigator.serviceWorker.register('./sw.js').catch(function(){});});
+}
+</script>
+</body>
+</html>
