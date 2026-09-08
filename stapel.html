@@ -69,13 +69,14 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 <div class="topbar">
   <a class="back" href="./" title="Zurück zur Auswahl">←</a>
   📦 Stapeldruck
-  <span class="ver">v7</span>
+  <span class="ver">v8</span>
 </div>
 <div class="main">
   <div class="card">
     <div class="card-title">Format</div>
     <div class="format-list">
       <label><input type="radio" name="fmt" value="klein" checked> Klein – 57 × 30,9 mm &nbsp;(Zebra ZD421)</label>
+      <label><input type="radio" name="fmt" value="schmal"> Schmal – 210 × 65 mm &nbsp;(Laserdrucker)</label>
       <label><input type="radio" name="fmt" value="mittel"> Mittel – 210 × 90 mm &nbsp;(Laserdrucker)</label>
       <label><input type="radio" name="fmt" value="gross"> Groß – A5 210 × 148 mm &nbsp;(Laserdrucker)</label>
     </div>
@@ -137,9 +138,10 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 </div>
 
 <script>
-var VERSION='v7';
+var VERSION='v8';
 var FMT={
   klein: {mmW:57,   mmH:30.9,  padMm:2, qrMm:20.5, artShare:0.30, wrap:true},
+  schmal:{mmW:210,  mmH:65,    padMm:5, qrMm:38},
   mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
   gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
 };
