@@ -1,8 +1,9 @@
-const CACHE = 'label-drucker-v2';
-const ASSETS = ['./', './index.html', './manifest.json'];
+const CACHE = 'label-drucker-v3';
+const ASSETS = ['./', './index.html', './einzel.html', './stapel.html',
+                './manifest.json', './logo.svg', './icon.svg'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS).catch(() => {})));
   self.skipWaiting();
 });
 
