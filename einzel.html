@@ -76,7 +76,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 <div class="topbar">
   <a class="back" href="./" title="Zurück zur Auswahl">←</a>
   🏷️ Einzeldruck
-  <span class="ver">v7</span>
+  <span class="ver">v8</span>
 </div>
 <div class="main">
   <div class="col">
@@ -149,7 +149,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
   </div>
 </div>
 <script>
-var VERSION='v7';
+var VERSION='v8';
 var CAL_UI=/[?&]cal=1/.test(location.search);   // Einmess-Bereich nur auf Anforderung
 var KLEIN_DEF={mmW:57,mmH:30.9,padMm:2};        // eingemessenes Zebra-Etikett
 var FMT={
@@ -277,66 +277,115 @@ function widthRatio(txt,bold){
   return v;
 }
 
-/* Zaehlt die Zeilen, die der Browser beim Umbruch an Wortgrenzen erzeugt */
-function wrapLineCount(txt,fs,maxW){
-  var words=String(txt).split(/\s+/).filter(Boolean);
-  if(!words.length)return 1;
+/* ================= Etikett-Layout "Regaletikett" =================
+   Farbiger Balken oben, Rahmen, Bezeichnung fett, graue Zusatzzeile, Trennlinie.
+   mode 'side' : QR-Code rechts neben dem Text (Klein, Schmal, Mittel)
+   mode 'below': QR-Code unten mittig (Groß)
+   Alle Masse in mm. Schriftgroessen werden per Canvas-Messung berechnet. */
+var LAY={
+  klein: {mode:'side', col:'#000',    txtCol:'#000', hrCol:'#000',    bw:.35,rad:1.5,hd:2.5,pv:1.1,ph:2.0,qr:18,nr:2.4,gap:1.5,tiMax:3.2, suMax:2.2, hrW:.15,hrM:.7, res:.8},
+  schmal:{mode:'side', col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:.8, rad:3,  hd:5,  pv:4,  ph:6,  qr:40,nr:5,  gap:6,  tiMax:12,  suMax:7,   hrW:.35,hrM:2.5,res:1.5},
+  mittel:{mode:'side', col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:.8, rad:3,  hd:6,  pv:5,  ph:7,  qr:56,nr:6,  gap:8,  tiMax:15,  suMax:8.5, hrW:.4, hrM:3,  res:1.5},
+  gross: {mode:'below',col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:1,  rad:4,  hd:8,  pv:6,  ph:8,  qr:70,nr:7,  gap:3,  tiMax:14,  suMax:8,   hrW:.5, hrM:3.5,res:1.5}
+};
+var LH_TI=1.12, LH_SU=1.22, LH_NR=1.1, NR_TOP=0.25, LB_SAFE=0.97;
+
+function subText(a){return [a.z2,a.z3].filter(Boolean).join(' · ');}
+
+/* Zaehlt die Zeilen, die der Browser beim Umbruch erzeugt.
+   Umbruchstellen: Leerzeichen und nach einem Bindestrich (wie im Browser). */
+function lineCount(txt,fs,maxW,bold){
+  var toks=[];
+  String(txt).split(/\s+/).filter(Boolean).forEach(function(w){
+    var parts=w.split(/(?<=-)/);
+    for(var k=0;k<parts.length;k++)toks.push({t:parts[k],sp:k===0});
+  });
+  if(!toks.length)return 1;
   var lines=0,cur='';
-  for(var i=0;i<words.length;i++){
-    var w=words[i];
-    var wW=widthRatio(w,false)*fs;
-    if(wW>maxW){
-      if(cur){lines++;cur='';}
-      lines+=Math.ceil(wW/maxW);
-      continue;
-    }
-    var test=cur?cur+' '+w:w;
-    if(widthRatio(test,false)*fs<=maxW){cur=test;}
-    else{lines++;cur=w;}
+  for(var i=0;i<toks.length;i++){
+    var w=toks[i].t,wW=widthRatio(w,bold)*fs;
+    if(wW>maxW){if(cur){lines++;cur='';}lines+=Math.ceil(wW/maxW);continue;}
+    var test=cur?cur+(toks[i].sp?' ':'')+w:w;
+    if(widthRatio(test,bold)*fs<=maxW)cur=test; else{lines++;cur=w;}
   }
   if(cur)lines++;
   return Math.max(1,lines);
 }
 
-function descHeight(descs,fs,maxW){
-  var h=0;
-  for(var i=0;i<descs.length;i++)h+=wrapLineCount(descs[i],fs,maxW)*fs*LH_DSC;
-  return h;
+/* Groesste Schrift, bei der txt in hoechstens maxLines Zeilen passt */
+function fitLines(txt,maxFs,maxW,bold,maxLines){
+  if(lineCount(txt,maxFs,maxW,bold)<=maxLines)return maxFs;
+  var lo=0.5,hi=maxFs;
+  for(var it=0;it<22;it++){var m=(lo+hi)/2;if(lineCount(txt,m,maxW,bold)<=maxLines)lo=m;else hi=m;}
+  return lo;
 }
 
-function calcLayout(a,f){
-  var gap=f.padMm/2;
-  var dvd=0.3;
-  var reserve=f.wrap?0.8:1.5;
-  var txtW=f.mmW-2*f.padMm-f.qrMm-2*gap-dvd;
-  var budget=Math.max(2,txtW-reserve);
-  var availH=f.mmH-2*f.padMm;
-  var descs=[a.z1,a.z2,a.z3].filter(Boolean);
-  var share=f.artShare||ART_SHARE;
+function calcLabel(a,fkey,f){
+  var g=LAY[fkey],W=f.mmW,H=f.mmH;
+  var inW=W-2*g.bw-2*g.ph, inH=H-2*g.bw-g.hd-2*g.pv;
+  var ti=a.z1||'', su=subText(a);
+  var R={g:g,W:W,H:H,ti:ti,su:su,hr:!!(ti&&su)};
+  var hrH=R.hr?2*g.hrM+g.hrW:0;
 
-  var rA=widthRatio(a.nr,true);
-  var artFs=Math.min((availH*share)/LH_ART, rA>0?budget/rA:availH*share)*SAFE;
-  var artH=artFs*LH_ART;
-
-  var dscFs=0;
-  if(descs.length){
-    var room=availH-artH-(f.wrap?0.4:0);
-    if(room<1)room=1;
-    if(f.wrap){
-      var lo=MIN_FS, hi=room/LH_DSC;
-      if(hi<lo)hi=lo;
-      for(var it=0;it<18;it++){
-        var mid=(lo+hi)/2;
-        if(descHeight(descs,mid,budget)<=room)lo=mid; else hi=mid;
-      }
-      dscFs=Math.max(MIN_FS,lo*0.98);
-    }else{
-      dscFs=(room/descs.length)/LH_DSC;
-      descs.forEach(function(t){var r=widthRatio(t,false);if(r>0)dscFs=Math.min(dscFs,budget/r);});
-      dscFs*=SAFE;
+  if(g.mode==='side'){
+    var nrFs=g.nr;
+    var q=Math.min(g.qr, inH-nrFs*(LH_NR+NR_TOP));
+    var rN=widthRatio(a.nr,true); if(rN>0)nrFs=Math.min(nrFs,q/rN*LB_SAFE);
+    var tw=Math.max(2,inW-q-g.gap-g.res);
+    var h=function(s){
+      return (ti?lineCount(ti,g.tiMax*s,tw,true)*g.tiMax*s*LH_TI:0)
+            +(su?lineCount(su,g.suMax*s,tw,false)*g.suMax*s*LH_SU:0)+hrH;
+    };
+    var s=1;
+    if(h(1)>inH){
+      var lo=0.02,hi=1;
+      for(var it=0;it<22;it++){var m=(lo+hi)/2;if(h(m)<=inH)lo=m;else hi=m;}
+      s=lo;
     }
+    s*=LB_SAFE;
+    R.q=q;R.nrFs=nrFs;R.tiFs=g.tiMax*s;R.suFs=g.suMax*s;R.nrTxt=a.nr;
+  }else{
+    var tw2=inW-g.res;
+    var tiFs=ti?Math.min(g.tiMax,tw2/Math.max(.01,widthRatio(ti,true)))*LB_SAFE:0;
+    var suFs=su?fitLines(su,g.suMax,tw2,false,2)*LB_SAFE:0;
+    var suLines=su?lineCount(su,suFs,tw2,false):0;
+    var nrTxt='Art.-Nr. '+a.nr;
+    var nrFs2=Math.min(g.nr,tw2/Math.max(.01,widthRatio(nrTxt,true))*LB_SAFE);
+    var used=(ti?tiFs*LH_TI:0)+(su?suLines*suFs*LH_SU:0)+2*g.hrM+g.hrW;
+    var q2=Math.max(10,Math.min(g.qr,inH-used-nrFs2*(LH_NR+NR_TOP)-g.gap));
+    R.q=q2;R.nrFs=nrFs2;R.tiFs=tiFs;R.suFs=suFs;R.nrTxt=nrTxt;R.hr=true;
   }
-  return {gap:gap,dvd:dvd,txtW:txtW,availH:availH,descs:descs,artFs:artFs,dscFs:dscFs,wrap:!!f.wrap};
+  return R;
+}
+
+/* CSS fuer ein Format – identisch fuer Vorschau und Druck */
+function labelCss(fkey,f){
+  var g=LAY[fkey],side=(g.mode==='side');
+  return [
+    '.lb{position:relative;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:'+g.bw+'mm solid '+g.col+';border-radius:'+g.rad+'mm;overflow:hidden;background:#fff;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif;color:#111;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+    '.lb-bar{flex:0 0 '+g.hd+'mm;background:'+g.col+';}',
+    '.lb-body{flex:1 1 auto;min-height:0;display:flex;padding:'+g.pv+'mm '+g.ph+'mm;'+(side?'flex-direction:row;align-items:center;':'flex-direction:column;')+'}',
+    '.lb-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}',
+    '.lb-ti{font-weight:bold;line-height:'+LH_TI+';'+(side?'overflow-wrap:anywhere;':'white-space:nowrap;')+'}',
+    '.lb-su{color:'+g.txtCol+';line-height:'+LH_SU+';overflow-wrap:anywhere;}',
+    '.lb-hr{flex:none;height:0;border-top:'+g.hrW+'mm solid '+g.hrCol+';margin:'+g.hrM+'mm 0;}',
+    '.lb-code{display:flex;flex-direction:column;align-items:center;justify-content:center;'+(side?'flex:none;margin-left:'+g.gap+'mm;':'flex:1 1 auto;min-height:0;')+'}',
+    '.lb-qr{display:block;image-rendering:pixelated;}',
+    '.lb-nr{font-weight:bold;line-height:'+LH_NR+';white-space:nowrap;margin-top:'+NR_TOP+'em;}'
+  ].join('\n');
+}
+
+/* HTML eines Etiketts */
+function labelHtml(R,qrUrl){
+  var ti=R.ti?'<div class="lb-ti" style="font-size:'+R.tiFs.toFixed(2)+'mm">'+hEsc(R.ti)+'</div>':'';
+  var su=R.su?'<div class="lb-su" style="font-size:'+R.suFs.toFixed(2)+'mm">'+hEsc(R.su)+'</div>':'';
+  var hr=R.hr?'<div class="lb-hr"></div>':'';
+  var code='<div class="lb-code">'
+    +(qrUrl?'<img class="lb-qr" style="width:'+R.q.toFixed(2)+'mm;height:'+R.q.toFixed(2)+'mm" src="'+qrUrl+'" alt="">':'<div style="width:'+R.q.toFixed(2)+'mm;height:'+R.q.toFixed(2)+'mm"></div>')
+    +'<div class="lb-nr" style="font-size:'+R.nrFs.toFixed(2)+'mm">'+hEsc(R.nrTxt)+'</div></div>';
+  if(R.g.mode==='side')
+    return '<div class="lb"><div class="lb-bar"></div><div class="lb-body"><div class="lb-txt">'+ti+hr+su+'</div>'+code+'</div></div>';
+  return '<div class="lb"><div class="lb-bar"></div><div class="lb-body">'+ti+su+hr+code+'</div></div>';
 }
 
 async function loadData(){
@@ -427,44 +476,25 @@ document.querySelectorAll('input[name="fmt"]').forEach(function(r){
   });
 });
 
+function qrUrlSync(text,px){
+  var d=document.createElement('div');
+  new QRCode(d,{text:text,width:px,height:px,correctLevel:QRCode.CorrectLevel.M});
+  var c=d.querySelector('canvas');
+  return c?c.toDataURL('image/png'):'';
+}
+
 function renderPreview(){
   var a=curA,fkey=getFmt(),f=FMT[fkey];
-  var L=calcLayout(a,f);
+  var R=calcLabel(a,fkey,f);
   var sc=Math.min(PREVW/(f.mmW*PXMM),PREVH/(f.mmH*PXMM),1.8)*0.9;
-  var px=function(mm){return mm*PXMM*sc;};
-
-  var label=document.createElement('div');
-  label.className='label-dom'+(L.wrap?' wrap':'');
-  label.style.cssText='width:'+px(f.mmW)+'px;height:'+px(f.mmH)+'px;padding:'+px(f.padMm)+'px;';
-
-  var lqr=document.createElement('div');lqr.className='lqr';
-  lqr.style.cssText='width:'+px(f.qrMm)+'px;height:'+px(f.qrMm)+'px;flex:0 0 '+px(f.qrMm)+'px;';
-  var qrDiv=document.createElement('div');
-  var qrPx=Math.max(20,Math.round(px(f.qrMm)));
-  qrDiv.style.cssText='width:'+qrPx+'px;height:'+qrPx+'px;';
-  lqr.appendChild(qrDiv);label.appendChild(lqr);
-
-  var ldiv=document.createElement('div');ldiv.className='ldiv';
-  ldiv.style.cssText='width:'+Math.max(1,px(L.dvd))+'px;margin:0 '+px(L.gap)+'px;';
-  label.appendChild(ldiv);
-
-  var ltxt=document.createElement('div');ltxt.className='ltxt';
-  var artEl=document.createElement('div');artEl.className='lart';
-  artEl.textContent=a.nr;artEl.style.fontSize=px(L.artFs)+'px';
-  ltxt.appendChild(artEl);
-  L.descs.forEach(function(t){
-    var el=document.createElement('div');el.className='ldesc';
-    el.textContent=t;el.style.fontSize=px(L.dscFs)+'px';
-    ltxt.appendChild(el);
-  });
-  label.appendChild(ltxt);
-
-  document.getElementById('prev-ph').style.display='none';
+  var wPx=(f.mmW*PXMM*sc).toFixed(1),hPx=(f.mmH*PXMM*sc).toFixed(1);
   var pl=document.getElementById('prev-label');
-  pl.innerHTML='';pl.appendChild(label);pl.style.display='block';
-
-  if(prevQR){try{prevQR.clear();}catch(e){}}
-  prevQR=new QRCode(qrDiv,{text:a.nr,width:qrPx,height:qrPx,correctLevel:QRCode.CorrectLevel.M});
+  pl.innerHTML='<style>'+labelCss(fkey,f)+'</style>'
+    +'<div style="width:'+wPx+'px;height:'+hPx+'px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.2);border-radius:'+(LAY[fkey].rad*PXMM*sc).toFixed(1)+'px;">'
+    +'<div style="transform:scale('+sc.toFixed(4)+');transform-origin:0 0;width:'+f.mmW+'mm;">'
+    +labelHtml(R,qrUrlSync(a.nr,400))+'</div></div>';
+  document.getElementById('prev-ph').style.display='none';
+  pl.style.display='block';
 }
 
 function makeQR(text,px,cb){
@@ -513,39 +543,22 @@ function printLabel(){
   if(!curA)return;
   var a=curA,fkey=getFmt(),f=FMT[fkey];
   var isKlein=(fkey==='klein');
-  var L=calcLayout(a,f);
+  var R=calcLabel(a,fkey,f);
   var pageW=isKlein?f.mmW+'mm':'210mm';
   var pageH=isKlein?f.mmH+'mm':'297mm';
 
   showSt('Erzeuge Druckansicht…','inf');
   makeQR(a.nr,600,function(qrUrl){
-    var dscHtml=L.descs.map(function(d){
-      return '<div class="dsc">'+hEsc(d)+'</div>';
-    }).join('');
-
     var css=[
       '*{box-sizing:border-box;margin:0;padding:0;}',
       '@page{size:'+pageW+' '+pageH+';margin:0;}',
       'html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
       '.page{position:relative;width:'+pageW+';height:'+pageH+';overflow:hidden;}',
-      '.wrap{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;display:flex;align-items:center;padding:'+f.padMm+'mm;background:#fff;font-family:Arial,Helvetica,sans-serif;overflow:hidden;}',
-      '.qsec{width:'+f.qrMm+'mm;height:'+f.qrMm+'mm;flex:0 0 '+f.qrMm+'mm;overflow:hidden;}',
-      '.qsec img{width:'+f.qrMm+'mm;height:'+f.qrMm+'mm;display:block;}',
-      '.dvd{width:'+L.dvd+'mm;align-self:stretch;background:#999;margin:0 '+L.gap+'mm;flex:0 0 auto;}',
-      '.txt{flex:1 1 auto;min-width:0;max-height:'+(f.mmH-2*f.padMm).toFixed(2)+'mm;overflow:hidden;}',
-      '.art{font-weight:bold;line-height:'+LH_ART+';white-space:nowrap;font-size:'+L.artFs.toFixed(2)+'mm;}',
-      '.dsc{line-height:'+LH_DSC+';color:#222;font-size:'+L.dscFs.toFixed(2)+'mm;'
-        +(L.wrap?'white-space:normal;overflow-wrap:break-word;':'white-space:nowrap;')+'}',
-      '.brd{position:absolute;top:0;left:0;width:'+f.mmW+'mm;height:'+f.mmH+'mm;border:.3mm solid #bbb;pointer-events:none;}'
+      '.pos{position:absolute;top:0;left:0;}',
+      labelCss(fkey,f)
     ].join('\n');
-
     var html='<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Etikett '+hEsc(a.nr)+'</title><style>'
-      +css+'</style></head><body><div class="page"><div class="wrap">'
-      +'<div class="qsec">'+(qrUrl?'<img src="'+qrUrl+'" alt="">':'')+'</div>'
-      +'<div class="dvd"></div>'
-      +'<div class="txt"><div class="art">'+hEsc(a.nr)+'</div>'+dscHtml+'</div>'
-      +'</div>'+(isKlein?'':'<div class="brd"></div>')+'</div></body></html>';
-
+      +css+'</style></head><body><div class="page"><div class="pos">'+labelHtml(R,qrUrl)+'</div></div></body></html>';
     openPrint(html,760,520);
     showSt('✔ Druckansicht geöffnet','ok');
     setTimeout(clearSt,2500);
