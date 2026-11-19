@@ -69,7 +69,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 <div class="topbar">
   <a class="back" href="./" title="Zurück zur Auswahl">←</a>
   📦 Stapeldruck
-  <span class="ver">v9</span>
+  <span class="ver">v10</span>
 </div>
 <div class="main">
   <div class="card">
@@ -78,7 +78,8 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
       <label><input type="radio" name="fmt" value="klein" checked> Klein – 57 × 30,9 mm &nbsp;(Zebra ZD421)</label>
       <label><input type="radio" name="fmt" value="schmal"> Schmal – 210 × 65 mm &nbsp;(Laserdrucker)</label>
       <label><input type="radio" name="fmt" value="mittel"> Mittel – 210 × 90 mm &nbsp;(Laserdrucker)</label>
-      <label><input type="radio" name="fmt" value="gross"> Groß – A5 210 × 148 mm &nbsp;(Laserdrucker)</label>
+      <label><input type="radio" name="fmt" value="gross"> Groß – 210 × 148 mm auf A4-Papier &nbsp;(Laserdrucker)</label>
+      <label><input type="radio" name="fmt" value="a5blatt"> A5-Blatt – 210 × 148 mm auf A5-Papier &nbsp;(Laserdrucker)</label>
     </div>
   </div>
 
@@ -138,12 +139,13 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 </div>
 
 <script>
-var VERSION='v9';
+var VERSION='v10';
 var FMT={
   klein: {mmW:57,   mmH:30.9,  padMm:2, qrMm:20.5, artShare:0.30, wrap:true},
   schmal:{mmW:210,  mmH:65,    padMm:5, qrMm:38},
   mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
-  gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50}
+  gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50},
+  a5blatt:{mmW:200, mmH:138,   padMm:8, qrMm:50, page:'A5'}   // A5 quer, 5 mm Abstand zur Blattkante
 };
 var ART_SHARE=0.40, LH_ART=1.05, LH_DSC=1.25, SAFE=0.97, MIN_FS=1.2;
 var WARN_COUNT=500;
@@ -445,13 +447,14 @@ function widthRatio(txt,bold){
 /* ================= Etikett-Layout "Regaletikett" =================
    Farbiger Balken oben, Rahmen, Bezeichnung fett, graue Zusatzzeile, Trennlinie.
    mode 'side' : QR-Code rechts neben dem Text (Klein, Schmal, Mittel)
-   mode 'below': QR-Code unten mittig (Groß)
+   mode 'below': QR-Code unten mittig (Groß, A5-Blatt)
    Alle Masse in mm. Schriftgroessen werden per Canvas-Messung berechnet. */
 var LAY={
   klein: {mode:'side', col:'#000',    txtCol:'#000', hrCol:'#000',    bw:.35,rad:1.5,hd:2.5,pv:1.1,ph:2.0,qr:18,nr:2.4,gap:1.5,tiMax:3.2, suMax:2.2, hrW:.15,hrM:.7, res:.8},
   schmal:{mode:'side', col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:.8, rad:3,  hd:5,  pv:4,  ph:6,  qr:40,nr:5,  gap:6,  tiMax:12,  suMax:7,   hrW:.35,hrM:2.5,res:1.5},
   mittel:{mode:'side', col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:.8, rad:3,  hd:6,  pv:5,  ph:7,  qr:56,nr:6,  gap:8,  tiMax:15,  suMax:8.5, hrW:.4, hrM:3,  res:1.5},
-  gross: {mode:'below',col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:1,  rad:4,  hd:8,  pv:6,  ph:8,  qr:70,nr:7,  gap:3,  tiMax:14,  suMax:8,   hrW:.5, hrM:3.5,res:1.5}
+  gross: {mode:'below',col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:1,  rad:4,  hd:8,  pv:6,  ph:8,  qr:70,nr:7,  gap:3,  tiMax:14,  suMax:8,   hrW:.5, hrM:3.5,res:1.5},
+  a5blatt:{mode:'below',col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:1, rad:4,  hd:8,  pv:6,  ph:8,  qr:70,nr:7,  gap:3,  tiMax:14,  suMax:8,   hrW:.5, hrM:3.5,res:1.5}
 };
 var LH_TI=1.12, LH_SU=1.22, LH_NR=1.1, NR_TOP=0.25, LB_SAFE=0.97;
 
@@ -553,6 +556,16 @@ function labelHtml(R,qrUrl){
   return '<div class="lb"><div class="lb-bar"></div><div class="lb-body">'+ti+su+hr+code+'</div></div>';
 }
 
+/* Seitenformat je Etikettformat:
+   Klein   -> Seite = Etikett (Zebra)
+   A5-Blatt-> A5 quer, Etikett mittig mit Abstand zur Blattkante
+   sonst   -> A4 hoch, Etikett oben links */
+function pageInfo(fkey,f){
+  if(fkey==='klein')return {w:f.mmW+'mm',h:f.mmH+'mm',size:f.mmW+'mm '+f.mmH+'mm',top:0,left:0};
+  if(f.page==='A5')return {w:'210mm',h:'148mm',size:'A5 landscape',top:(148-f.mmH)/2,left:(210-f.mmW)/2};
+  return {w:'210mm',h:'297mm',size:'210mm 297mm',top:0,left:0};
+}
+
 /* ================= Druck ================= */
 
 function confirmPrint(){
@@ -600,7 +613,7 @@ async function startPrint(){
 
   var fkey=document.querySelector('input[name="fmt"]:checked').value;
   var f=FMT[fkey];
-  var isKlein=(fkey==='klein');
+  var P=pageInfo(fkey,f);
   var total=artikel.length;
   var errors=[];
 
@@ -648,14 +661,12 @@ async function startPrint(){
 
   if(cancelled)return;
 
-  var pageW=isKlein?f.mmW+'mm':'210mm';
-  var pageH=isKlein?f.mmH+'mm':'297mm';
   var css=[
     '*{box-sizing:border-box;margin:0;padding:0;}',
-    '@page{size:'+pageW+' '+pageH+';margin:0;}',
+    '@page{size:'+P.size+';margin:0;}',
     'html,body{margin:0;padding:0;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
-    '.page{position:relative;width:'+pageW+';height:'+pageH+';overflow:hidden;}',
-    '.pos{position:absolute;top:0;left:0;}',
+    '.page{position:relative;width:'+P.w+';height:'+P.h+';overflow:hidden;}',
+    '.pos{position:absolute;top:'+P.top+'mm;left:'+P.left+'mm;}',
     labelCss(fkey,f)
   ].join('\n');
 
