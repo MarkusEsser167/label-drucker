@@ -76,7 +76,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
 <div class="topbar">
   <a class="back" href="./" title="Zurück zur Auswahl">←</a>
   🏷️ Einzeldruck
-  <span class="ver">v9</span>
+  <span class="ver">v10</span>
 </div>
 <div class="main">
   <div class="col">
@@ -84,6 +84,7 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
       <div class="card-title">Format</div>
       <div class="format-list">
         <label><input type="radio" name="fmt" value="klein" checked> Klein – Zebra ZD421</label>
+        <label><input type="radio" name="fmt" value="zhoch"> Zebra Hoch – 50 × 100 mm &nbsp;(Zebra ZD421)</label>
         <label><input type="radio" name="fmt" value="schmal"> Schmal – 210 × 65 mm &nbsp;(Laserdrucker)</label>
         <label><input type="radio" name="fmt" value="mittel"> Mittel – 210 × 90 mm &nbsp;(Laserdrucker)</label>
         <label><input type="radio" name="fmt" value="gross"> Groß – 210 × 148 mm auf A4-Papier &nbsp;(Laserdrucker)</label>
@@ -150,11 +151,12 @@ body{font-family:Arial,sans-serif;background:#f0f0f0;min-height:100vh;}
   </div>
 </div>
 <script>
-var VERSION='v9';
+var VERSION='v10';
 var CAL_UI=/[?&]cal=1/.test(location.search);   // Einmess-Bereich nur auf Anforderung
 var KLEIN_DEF={mmW:57,mmH:30.9,padMm:2};        // eingemessenes Zebra-Etikett
 var FMT={
   klein: {mmW:57,   mmH:30.9,  padMm:2, qrMm:20.5, artShare:0.30, wrap:true},
+  zhoch: {mmW:50,   mmH:100,   padMm:2, qrMm:40, page:'label'},   // Zebra 50 x 100 mm, Hochformat
   schmal:{mmW:210,  mmH:65,    padMm:5, qrMm:38},
   mittel:{mmW:210,  mmH:90,    padMm:6, qrMm:40},
   gross: {mmW:210,  mmH:148.5, padMm:8, qrMm:50},
@@ -282,10 +284,12 @@ function widthRatio(txt,bold){
 /* ================= Etikett-Layout "Regaletikett" =================
    Farbiger Balken oben, Rahmen, Bezeichnung fett, graue Zusatzzeile, Trennlinie.
    mode 'side' : QR-Code rechts neben dem Text (Klein, Schmal, Mittel)
-   mode 'below': QR-Code unten mittig (Groß, A5-Blatt)
+   mode 'below': QR-Code unten mittig (Zebra Hoch, Groß, A5-Blatt)
+   tiLines/suLines: max. Zeilen fuer Titel/Zusatzzeile im Modus 'below' (Standard 1 / 2)
    Alle Masse in mm. Schriftgroessen werden per Canvas-Messung berechnet. */
 var LAY={
   klein: {mode:'side', col:'#000',    txtCol:'#000', hrCol:'#000',    bw:.35,rad:1.5,hd:2.5,pv:1.1,ph:2.0,qr:18,nr:2.4,gap:1.5,tiMax:3.2, suMax:2.2, hrW:.15,hrM:.7, res:.8},
+  zhoch: {mode:'below',col:'#000',    txtCol:'#000', hrCol:'#000',    bw:.4, rad:2,  hd:4,  pv:2,  ph:2.5,qr:40,nr:4,  gap:2,  tiMax:6,   suMax:3.6, hrW:.2, hrM:1.5,res:.8, tiLines:3, suLines:3},
   schmal:{mode:'side', col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:.8, rad:3,  hd:5,  pv:4,  ph:6,  qr:40,nr:5,  gap:6,  tiMax:12,  suMax:7,   hrW:.35,hrM:2.5,res:1.5},
   mittel:{mode:'side', col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:.8, rad:3,  hd:6,  pv:5,  ph:7,  qr:56,nr:6,  gap:8,  tiMax:15,  suMax:8.5, hrW:.4, hrM:3,  res:1.5},
   gross: {mode:'below',col:'#1f4e7a', txtCol:'#555', hrCol:'#c8c8c8', bw:1,  rad:4,  hd:8,  pv:6,  ph:8,  qr:70,nr:7,  gap:3,  tiMax:14,  suMax:8,   hrW:.5, hrM:3.5,res:1.5},
@@ -348,13 +352,15 @@ function calcLabel(a,fkey,f){
     s*=LB_SAFE;
     R.q=q;R.nrFs=nrFs;R.tiFs=g.tiMax*s;R.suFs=g.suMax*s;R.nrTxt=a.nr;
   }else{
-    var tw2=inW-g.res;
-    var tiFs=ti?Math.min(g.tiMax,tw2/Math.max(.01,widthRatio(ti,true)))*LB_SAFE:0;
-    var suFs=su?fitLines(su,g.suMax,tw2,false,2)*LB_SAFE:0;
+    var tw2=inW-g.res, tiMaxL=g.tiLines||1, suMaxL=g.suLines||2;
+    var tiFs=ti?(tiMaxL>1?fitLines(ti,g.tiMax,tw2,true,tiMaxL)
+                         :Math.min(g.tiMax,tw2/Math.max(.01,widthRatio(ti,true))))*LB_SAFE:0;
+    var tiLines=ti?(tiMaxL>1?lineCount(ti,tiFs,tw2,true):1):0;
+    var suFs=su?fitLines(su,g.suMax,tw2,false,suMaxL)*LB_SAFE:0;
     var suLines=su?lineCount(su,suFs,tw2,false):0;
     var nrTxt='Art.-Nr. '+a.nr;
     var nrFs2=Math.min(g.nr,tw2/Math.max(.01,widthRatio(nrTxt,true))*LB_SAFE);
-    var used=(ti?tiFs*LH_TI:0)+(su?suLines*suFs*LH_SU:0)+2*g.hrM+g.hrW;
+    var used=(ti?tiLines*tiFs*LH_TI:0)+(su?suLines*suFs*LH_SU:0)+2*g.hrM+g.hrW;
     var q2=Math.max(10,Math.min(g.qr,inH-used-nrFs2*(LH_NR+NR_TOP)-g.gap));
     R.q=q2;R.nrFs=nrFs2;R.tiFs=tiFs;R.suFs=suFs;R.nrTxt=nrTxt;R.hr=true;
   }
@@ -369,7 +375,7 @@ function labelCss(fkey,f){
     '.lb-bar{flex:0 0 '+g.hd+'mm;background:'+g.col+';}',
     '.lb-body{flex:1 1 auto;min-height:0;display:flex;padding:'+g.pv+'mm '+g.ph+'mm;'+(side?'flex-direction:row;align-items:center;':'flex-direction:column;')+'}',
     '.lb-txt{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center;overflow:hidden;}',
-    '.lb-ti{font-weight:bold;line-height:'+LH_TI+';'+(side?'overflow-wrap:anywhere;':'white-space:nowrap;')+'}',
+    '.lb-ti{font-weight:bold;line-height:'+LH_TI+';'+((side||(g.tiLines||1)>1)?'overflow-wrap:anywhere;':'white-space:nowrap;')+'}',
     '.lb-su{color:'+g.txtCol+';line-height:'+LH_SU+';overflow-wrap:anywhere;}',
     '.lb-hr{flex:none;height:0;border-top:'+g.hrW+'mm solid '+g.hrCol+';margin:'+g.hrM+'mm 0;}',
     '.lb-code{display:flex;flex-direction:column;align-items:center;justify-content:center;'+(side?'flex:none;margin-left:'+g.gap+'mm;':'flex:1 1 auto;min-height:0;')+'}',
@@ -392,11 +398,11 @@ function labelHtml(R,qrUrl){
 }
 
 /* Seitenformat je Etikettformat:
-   Klein   -> Seite = Etikett (Zebra)
+   Klein, Zebra Hoch -> Seite = Etikett (Zebra)
    A5-Blatt-> A5 quer, Etikett mittig mit Abstand zur Blattkante
    sonst   -> A4 hoch, Etikett oben links */
 function pageInfo(fkey,f){
-  if(fkey==='klein')return {w:f.mmW+'mm',h:f.mmH+'mm',size:f.mmW+'mm '+f.mmH+'mm',top:0,left:0};
+  if(fkey==='klein'||f.page==='label')return {w:f.mmW+'mm',h:f.mmH+'mm',size:f.mmW+'mm '+f.mmH+'mm',top:0,left:0};
   if(f.page==='A5')return {w:'210mm',h:'148mm',size:'A5 landscape',top:(148-f.mmH)/2,left:(210-f.mmW)/2};
   return {w:'210mm',h:'297mm',size:'210mm 297mm',top:0,left:0};
 }
